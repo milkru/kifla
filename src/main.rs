@@ -24,6 +24,12 @@ fn main() -> eframe::Result<()> {
             let mut style = (*cc.egui_ctx.style()).clone();
             style.visuals.handle_shape = egui::style::HandleShape::Rect { aspect_ratio: 0.0 };
             style.visuals.slider_trailing_fill = true;
+            style.visuals.panel_fill = egui::Color32::from_gray(45);
+            style.visuals.window_fill = egui::Color32::from_gray(45);
+            style.visuals.override_text_color = Some(egui::Color32::from_gray(235));
+            style.visuals.selection.bg_fill = egui::Color32::from_gray(150);
+            style.visuals.selection.stroke =
+                egui::Stroke::new(1.0, egui::Color32::from_gray(220));
             cc.egui_ctx.set_style(style);
             Box::<KiflaApp>::default()
         }),

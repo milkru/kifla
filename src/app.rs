@@ -351,7 +351,9 @@ impl eframe::App for KiflaApp {
                 });
         }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        let canvas_frame =
+            egui::Frame::central_panel(&ctx.style()).fill(egui::Color32::from_gray(28));
+        egui::CentralPanel::default().frame(canvas_frame).show(ctx, |ui| {
             if let Some(error) = &self.error {
                 ui.colored_label(egui::Color32::LIGHT_RED, error);
             }
