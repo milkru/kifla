@@ -1,4 +1,5 @@
 mod app;
+mod color;
 mod operation;
 mod operations;
 mod widgets;

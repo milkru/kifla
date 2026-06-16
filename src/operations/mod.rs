@@ -1,14 +1,18 @@
 mod brightness_contrast;
 mod curves;
 mod exposure;
+mod hue_saturation;
 mod invert;
 mod levels;
+mod vibrance;
 
 pub use brightness_contrast::BrightnessContrast;
 pub use curves::Curves;
 pub use exposure::Exposure;
+pub use hue_saturation::HueSaturation;
 pub use invert::Invert;
 pub use levels::Levels;
+pub use vibrance::Vibrance;
 
 use crate::operation::OperationKind;
 
@@ -29,6 +33,16 @@ pub static OPERATION_GROUPS: &[&[OperationKind]] = &[
         OperationKind {
             menu_label: "🔆 Exposure",
             make: || Box::new(Exposure::default()),
+        },
+    ],
+    &[
+        OperationKind {
+            menu_label: "🎨 Hue / Saturation",
+            make: || Box::new(HueSaturation::default()),
+        },
+        OperationKind {
+            menu_label: "🌈 Vibrance",
+            make: || Box::new(Vibrance::default()),
         },
     ],
     &[OperationKind {
