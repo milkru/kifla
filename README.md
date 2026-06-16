@@ -1,28 +1,21 @@
 # Kifla
 
-Lightweight desktop application for processing textures.
+A small desktop app for tinkering with textures.
 
-The idea is simple: load a texture, apply one or more operations, preview the result, and save it. The tool is intended as a dedicated workbench for building and using custom texture processing utilities.
+Open an image, stack up some edits, watch the preview update live, and save the result. Everything is non-destructive — each edit is replayed from the original, so you can tweak, toggle, or remove any of them at any time.
 
-The UI consists of four main areas:
+## What it does
 
-* A top menu bar containing file actions and available tools.
-* A history panel showing the original texture and all applied operations.
-* A tool settings panel used to configure the currently selected operation.
-* A central preview area.
+- **Transform** — flip, rotate, resize (with a few sampling modes, including min/max-luminance for masks)
+- **Image adjustments** — brightness/contrast, levels, curves, exposure, hue/saturation, vibrance, color balance, black & white, channel mixer, posterize, threshold, selective color, invert, shadows/highlights
+- **Save** to PNG, JPEG, BMP, TGA, or multi-resolution ICO
 
-The application is designed around full-image operations rather than paint-style editing. Only one tool is active at a time.
+Adding an edit does nothing until you touch its settings — defaults are no-ops, so the stack stays predictable.
 
-Each operation is stored as a history entry containing the operation type and its parameters. The final result is produced by replaying the operation stack from the original texture, providing a simple non-destructive workflow. Operations can be modified, enabled, disabled, removed, or reordered at any time.
+## Under the hood
 
-Image processing is performed on the CPU for simplicity. The architecture should make it possible to move individual operations to GPU shaders in the future without changing the overall workflow or user interface.
+Processing runs on the CPU for now. Each operation is a self-contained type implementing a small `Operation` trait, so adding a new one is mostly: write a file, register it in a menu group. The architecture leaves room to move individual operations onto the GPU later without changing the workflow.
 
-Technology stack:
+## Built with
 
-* Rust
-* egui
-* eframe
-* image
-* rfd
-
-The goal of the project is to provide a simple and extensible tool for texture processing.
+Rust · egui · eframe · image · rfd
