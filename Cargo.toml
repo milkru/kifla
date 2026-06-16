@@ -7,6 +7,7 @@ edition = "2021"
 eframe = "0.26"
 egui = "0.26"
 image = "0.24"
+rayon = "1"
 rfd = "0.13"
 
 [target.'cfg(windows)'.build-dependencies]

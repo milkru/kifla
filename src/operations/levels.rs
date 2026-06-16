@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::operation::Operation;
+use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
 pub struct Levels {
@@ -46,13 +46,13 @@ impl Operation for Levels {
     fn apply(&self, image: &mut image::RgbaImage) {
         let denom = (self.in_white - self.in_black).max(1e-4);
         let inv_gamma = 1.0 / self.gamma;
-        for pixel in image.pixels_mut() {
-            for channel in &mut pixel.0[..3] {
+        par_pixels(image, |px| {
+            for channel in &mut px[..3] {
                 let mut value = (*channel as f32 / 255.0 - self.in_black) / denom;
                 value = value.clamp(0.0, 1.0).powf(inv_gamma);
                 value = self.out_black + value * (self.out_white - self.out_black);
                 *channel = (value.clamp(0.0, 1.0) * 255.0).round() as u8;
             }
-        }
+        });
     }
 }

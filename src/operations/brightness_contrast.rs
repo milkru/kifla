@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::operation::Operation;
+use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
 #[derive(Default)]
@@ -27,13 +27,13 @@ impl Operation for BrightnessContrast {
 
     fn apply(&self, image: &mut image::RgbaImage) {
         let factor = 1.0 + self.contrast;
-        for pixel in image.pixels_mut() {
-            for channel in &mut pixel.0[..3] {
+        par_pixels(image, |px| {
+            for channel in &mut px[..3] {
                 let mut value = *channel as f32 / 255.0;
                 value += self.brightness;
                 value = (value - 0.5) * factor + 0.5;
                 *channel = (value.clamp(0.0, 1.0) * 255.0).round() as u8;
             }
-        }
+        });
     }
 }

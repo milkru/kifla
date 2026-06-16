@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::operation::Operation;
+use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
 #[derive(Default)]
@@ -40,11 +40,11 @@ impl Operation for ColorBalance {
 
     fn apply(&self, image: &mut image::RgbaImage) {
         const STRENGTH: f32 = 0.5;
-        for pixel in image.pixels_mut() {
+        par_pixels(image, |px| {
             let rgb = [
-                pixel[0] as f32 / 255.0,
-                pixel[1] as f32 / 255.0,
-                pixel[2] as f32 / 255.0,
+                px[0] as f32 / 255.0,
+                px[1] as f32 / 255.0,
+                px[2] as f32 / 255.0,
             ];
             let lum = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2];
             let shadow = (1.0 - 2.0 * lum).max(0.0);
@@ -56,8 +56,8 @@ impl Operation for ColorBalance {
                     * (self.shadows[c] * shadow
                         + self.midtones[c] * midtone
                         + self.highlights[c] * highlight);
-                pixel[c] = ((rgb[c] + shift).clamp(0.0, 1.0) * 255.0).round() as u8;
+                px[c] = ((rgb[c] + shift).clamp(0.0, 1.0) * 255.0).round() as u8;
             }
-        }
+        });
     }
 }

@@ -1,7 +1,7 @@
 use eframe::egui;
 
 use crate::color;
-use crate::operation::Operation;
+use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
 #[derive(Default)]
@@ -27,10 +27,10 @@ impl Operation for Vibrance {
     }
 
     fn apply(&self, image: &mut image::RgbaImage) {
-        for pixel in image.pixels_mut() {
-            let r = pixel[0] as f32 / 255.0;
-            let g = pixel[1] as f32 / 255.0;
-            let b = pixel[2] as f32 / 255.0;
+        par_pixels(image, |px| {
+            let r = px[0] as f32 / 255.0;
+            let g = px[1] as f32 / 255.0;
+            let b = px[2] as f32 / 255.0;
 
             let (h, mut s, l) = color::rgb_to_hsl(r, g, b);
             s *= 1.0 + self.saturation;
@@ -38,9 +38,9 @@ impl Operation for Vibrance {
             s = s.clamp(0.0, 1.0);
 
             let (nr, ng, nb) = color::hsl_to_rgb(h, s, l);
-            pixel[0] = (nr.clamp(0.0, 1.0) * 255.0).round() as u8;
-            pixel[1] = (ng.clamp(0.0, 1.0) * 255.0).round() as u8;
-            pixel[2] = (nb.clamp(0.0, 1.0) * 255.0).round() as u8;
-        }
+            px[0] = (nr.clamp(0.0, 1.0) * 255.0).round() as u8;
+            px[1] = (ng.clamp(0.0, 1.0) * 255.0).round() as u8;
+            px[2] = (nb.clamp(0.0, 1.0) * 255.0).round() as u8;
+        });
     }
 }

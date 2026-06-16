@@ -1,5 +1,6 @@
 use eframe::egui;
 use image::{imageops, Rgba, RgbaImage};
+use rayon::prelude::*;
 
 use crate::operation::Operation;
 use crate::widgets;
@@ -166,7 +167,10 @@ fn resample_extreme(
         (((index as u64 * 2 + 1) * src as u64) / (dst as u64 * 2)).min(src as u64 - 1) as u32
     };
 
-    for oy in 0..dst_h {
+    let row_len = dst_w as usize * 4;
+    let buffer: &mut [u8] = &mut out;
+    buffer.par_chunks_mut(row_len).enumerate().for_each(|(oy, row)| {
+        let oy = oy as u32;
         let (y0, y1) = span(oy, dst_h, src_h);
         let ny = nearest(oy, dst_h, src_h);
         for ox in 0..dst_w {
@@ -202,9 +206,10 @@ fn resample_extreme(
             let pixel = eligible
                 .map(|(p, _)| p)
                 .unwrap_or_else(|| *src.get_pixel(nearest(ox, dst_w, src_w), ny));
-            out.put_pixel(ox, oy, pixel);
+            let o = ox as usize * 4;
+            row[o..o + 4].copy_from_slice(&pixel.0);
         }
-    }
+    });
 
     out
 }

@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::operation::Operation;
+use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
 pub struct Exposure {
@@ -39,12 +39,12 @@ impl Operation for Exposure {
     fn apply(&self, image: &mut image::RgbaImage) {
         let mult = 2f32.powf(self.exposure);
         let inv_gamma = 1.0 / self.gamma;
-        for pixel in image.pixels_mut() {
-            for channel in &mut pixel.0[..3] {
+        par_pixels(image, |px| {
+            for channel in &mut px[..3] {
                 let mut value = *channel as f32 / 255.0 * mult + self.offset;
                 value = value.max(0.0).powf(inv_gamma);
                 *channel = (value.clamp(0.0, 1.0) * 255.0).round() as u8;
             }
-        }
+        });
     }
 }

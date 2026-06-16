@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::operation::Operation;
+use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
 pub struct BlackWhite {
@@ -44,16 +44,16 @@ impl Operation for BlackWhite {
         if self.amount <= 0.0 {
             return;
         }
-        for pixel in image.pixels_mut() {
-            let gray = (pixel[0] as f32 / 255.0 * self.red
-                + pixel[1] as f32 / 255.0 * self.green
-                + pixel[2] as f32 / 255.0 * self.blue)
+        par_pixels(image, |px| {
+            let gray = (px[0] as f32 / 255.0 * self.red
+                + px[1] as f32 / 255.0 * self.green
+                + px[2] as f32 / 255.0 * self.blue)
                 .clamp(0.0, 1.0)
                 * 255.0;
-            for channel in &mut pixel.0[..3] {
+            for channel in &mut px[..3] {
                 let blended = *channel as f32 * (1.0 - self.amount) + gray * self.amount;
                 *channel = blended.round() as u8;
             }
-        }
+        });
     }
 }

@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::operation::Operation;
+use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
 pub struct ChannelMixer {
@@ -48,18 +48,18 @@ impl Operation for ChannelMixer {
     }
 
     fn apply(&self, image: &mut image::RgbaImage) {
-        for pixel in image.pixels_mut() {
-            let r = pixel[0] as f32 / 255.0;
-            let g = pixel[1] as f32 / 255.0;
-            let b = pixel[2] as f32 / 255.0;
+        par_pixels(image, |px| {
+            let r = px[0] as f32 / 255.0;
+            let g = px[1] as f32 / 255.0;
+            let b = px[2] as f32 / 255.0;
 
             let nr = self.red[0] * r + self.red[1] * g + self.red[2] * b;
             let ng = self.green[0] * r + self.green[1] * g + self.green[2] * b;
             let nb = self.blue[0] * r + self.blue[1] * g + self.blue[2] * b;
 
-            pixel[0] = (nr.clamp(0.0, 1.0) * 255.0).round() as u8;
-            pixel[1] = (ng.clamp(0.0, 1.0) * 255.0).round() as u8;
-            pixel[2] = (nb.clamp(0.0, 1.0) * 255.0).round() as u8;
-        }
+            px[0] = (nr.clamp(0.0, 1.0) * 255.0).round() as u8;
+            px[1] = (ng.clamp(0.0, 1.0) * 255.0).round() as u8;
+            px[2] = (nb.clamp(0.0, 1.0) * 255.0).round() as u8;
+        });
     }
 }

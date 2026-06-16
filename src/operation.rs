@@ -1,4 +1,10 @@
 use eframe::egui;
+use rayon::prelude::*;
+
+pub fn par_pixels(image: &mut image::RgbaImage, f: impl Fn(&mut [u8]) + Sync + Send) {
+    let buffer: &mut [u8] = image;
+    buffer.par_chunks_mut(4).for_each(f);
+}
 
 pub trait Operation {
     fn name(&self) -> &'static str;

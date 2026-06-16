@@ -1,4 +1,4 @@
-use crate::operation::Operation;
+use crate::operation::{par_pixels, Operation};
 
 pub struct Invert;
 
@@ -8,10 +8,10 @@ impl Operation for Invert {
     }
 
     fn apply(&self, image: &mut image::RgbaImage) {
-        for pixel in image.pixels_mut() {
-            pixel[0] = 255 - pixel[0];
-            pixel[1] = 255 - pixel[1];
-            pixel[2] = 255 - pixel[2];
-        }
+        par_pixels(image, |px| {
+            px[0] = 255 - px[0];
+            px[1] = 255 - px[1];
+            px[2] = 255 - px[2];
+        });
     }
 }

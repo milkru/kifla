@@ -2020,6 +2020,7 @@ dependencies = [
  "eframe",
  "egui",
  "image",
+ "rayon",
  "rfd",
  "winresource",
 ]

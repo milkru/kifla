@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::operation::Operation;
+use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
 pub struct Posterize {
@@ -28,12 +28,12 @@ impl Operation for Posterize {
 
     fn apply(&self, image: &mut image::RgbaImage) {
         let steps = (self.levels.round() - 1.0).max(1.0);
-        for pixel in image.pixels_mut() {
-            for channel in &mut pixel.0[..3] {
+        par_pixels(image, |px| {
+            for channel in &mut px[..3] {
                 let value = *channel as f32 / 255.0;
                 let quantized = (value * steps).round() / steps;
                 *channel = (quantized.clamp(0.0, 1.0) * 255.0).round() as u8;
             }
-        }
+        });
     }
 }

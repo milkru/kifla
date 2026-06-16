@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::operation::Operation;
+use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
 pub struct Curves {
@@ -30,11 +30,11 @@ impl Operation for Curves {
 
     fn apply(&self, image: &mut image::RgbaImage) {
         let lut = build_lut(&self.points);
-        for pixel in image.pixels_mut() {
-            for channel in &mut pixel.0[..3] {
+        par_pixels(image, |px| {
+            for channel in &mut px[..3] {
                 *channel = lut[*channel as usize];
             }
-        }
+        });
     }
 }
 

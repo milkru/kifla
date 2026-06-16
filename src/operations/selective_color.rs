@@ -1,7 +1,7 @@
 use eframe::egui;
 
 use crate::color;
-use crate::operation::Operation;
+use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -111,10 +111,10 @@ impl Operation for SelectiveColor {
     }
 
     fn apply(&self, image: &mut image::RgbaImage) {
-        for pixel in image.pixels_mut() {
-            let r = pixel[0] as f32 / 255.0;
-            let g = pixel[1] as f32 / 255.0;
-            let b = pixel[2] as f32 / 255.0;
+        par_pixels(image, |px| {
+            let r = px[0] as f32 / 255.0;
+            let g = px[1] as f32 / 255.0;
+            let b = px[2] as f32 / 255.0;
 
             let (h, s, l) = color::rgb_to_hsl(r, g, b);
             let w = self.family.weight(h, s, l);
@@ -123,9 +123,9 @@ impl Operation for SelectiveColor {
             let ng = (g - w * (self.magenta + self.black)).clamp(0.0, 1.0);
             let nb = (b - w * (self.yellow + self.black)).clamp(0.0, 1.0);
 
-            pixel[0] = (nr * 255.0).round() as u8;
-            pixel[1] = (ng * 255.0).round() as u8;
-            pixel[2] = (nb * 255.0).round() as u8;
-        }
+            px[0] = (nr * 255.0).round() as u8;
+            px[1] = (ng * 255.0).round() as u8;
+            px[2] = (nb * 255.0).round() as u8;
+        });
     }
 }
