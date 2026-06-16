@@ -41,6 +41,9 @@ struct KiflaApp {
     size: [usize; 2],
     path: Option<PathBuf>,
     error: Option<String>,
+    zoom: f32,
+    pan: egui::Vec2,
+    needs_fit: bool,
 }
 
 impl KiflaApp {
@@ -61,7 +64,7 @@ impl KiflaApp {
                 let size = [rgba.width() as usize, rgba.height() as usize];
                 let color_image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
                 let handle =
-                    ctx.load_texture("texture", color_image, egui::TextureOptions::default());
+                    ctx.load_texture("texture", color_image, egui::TextureOptions::NEAREST);
                 let name = path
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
@@ -75,6 +78,7 @@ impl KiflaApp {
                 self.size = size;
                 self.path = Some(path);
                 self.error = None;
+                self.needs_fit = true;
             }
             Err(err) => {
                 self.error = Some(format!("Failed to load image: {err}"));
@@ -249,25 +253,51 @@ impl eframe::App for KiflaApp {
                 ui.colored_label(egui::Color32::LIGHT_RED, error);
             }
 
-            match &self.texture {
-                Some(texture) => {
-                    let available = ui.available_size();
-                    let tex_size = texture.size_vec2();
-                    let scale = (available.x / tex_size.x).min(available.y / tex_size.y);
-                    let display = tex_size * scale;
-                    ui.centered_and_justified(|ui| {
-                        ui.add(egui::Image::new(egui::load::SizedTexture::new(
-                            texture.id(),
-                            display,
-                        )));
-                    });
-                }
-                None => {
-                    ui.centered_and_justified(|ui| {
-                        ui.label("Open a texture to get started (File → Open…).");
-                    });
+            let Some(texture) = self.texture.clone() else {
+                ui.centered_and_justified(|ui| {
+                    ui.label("Open a texture to get started (File > Open…).");
+                });
+                return;
+            };
+
+            let rect = ui.available_rect_before_wrap();
+            let response = ui.allocate_rect(rect, egui::Sense::drag());
+            let tex_size = texture.size_vec2();
+
+            if self.needs_fit {
+                self.zoom = (rect.width() / tex_size.x).min(rect.height() / tex_size.y);
+                self.pan = egui::Vec2::ZERO;
+                self.needs_fit = false;
+            }
+
+            if response.dragged() {
+                self.pan += response.drag_delta();
+            }
+
+            if response.hovered() {
+                let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+                if scroll != 0.0 {
+                    let new_zoom = (self.zoom * (scroll * 0.0015).exp()).clamp(0.05, 64.0);
+                    if let Some(cursor) = response.hover_pos() {
+                        let to_cursor = cursor - rect.center();
+                        let factor = new_zoom / self.zoom;
+                        self.pan = to_cursor - (to_cursor - self.pan) * factor;
+                    }
+                    self.zoom = new_zoom;
                 }
             }
+
+            if response.dragged() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+            } else if response.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+            }
+
+            let image_rect =
+                egui::Rect::from_center_size(rect.center() + self.pan, tex_size * self.zoom);
+            let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+            ui.painter_at(rect)
+                .image(texture.id(), image_rect, uv, egui::Color32::WHITE);
         });
 
         if open_requested {
