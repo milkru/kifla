@@ -4,8 +4,6 @@ mod operation;
 mod operations;
 mod widgets;
 
-// TODO: each operations default value shouldnt change the image
-
 use eframe::egui;
 
 use app::KiflaApp;

@@ -7,6 +7,7 @@ pub struct BlackWhite {
     red: f32,
     green: f32,
     blue: f32,
+    amount: f32,
 }
 
 impl Default for BlackWhite {
@@ -15,6 +16,7 @@ impl Default for BlackWhite {
             red: 0.3,
             green: 0.59,
             blue: 0.11,
+            amount: 0.0,
         }
     }
 }
@@ -33,19 +35,25 @@ impl Operation for BlackWhite {
         changed |= widgets::slider(ui, "Red", &mut self.red, -0.5..=1.5);
         changed |= widgets::slider(ui, "Green", &mut self.green, -0.5..=1.5);
         changed |= widgets::slider(ui, "Blue", &mut self.blue, -0.5..=1.5);
+        ui.separator();
+        changed |= widgets::slider(ui, "Amount", &mut self.amount, 0.0..=1.0);
         changed
     }
 
     fn apply(&self, image: &mut image::RgbaImage) {
+        if self.amount <= 0.0 {
+            return;
+        }
         for pixel in image.pixels_mut() {
             let gray = (pixel[0] as f32 / 255.0 * self.red
                 + pixel[1] as f32 / 255.0 * self.green
                 + pixel[2] as f32 / 255.0 * self.blue)
-                .clamp(0.0, 1.0);
-            let value = (gray * 255.0).round() as u8;
-            pixel[0] = value;
-            pixel[1] = value;
-            pixel[2] = value;
+                .clamp(0.0, 1.0)
+                * 255.0;
+            for channel in &mut pixel.0[..3] {
+                let blended = *channel as f32 * (1.0 - self.amount) + gray * self.amount;
+                *channel = blended.round() as u8;
+            }
         }
     }
 }

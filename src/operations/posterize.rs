@@ -9,7 +9,7 @@ pub struct Posterize {
 
 impl Default for Posterize {
     fn default() -> Self {
-        Self { levels: 4.0 }
+        Self { levels: 256.0 }
     }
 }
 
@@ -23,7 +23,7 @@ impl Operation for Posterize {
     }
 
     fn settings_ui(&mut self, ui: &mut egui::Ui) -> bool {
-        widgets::slider(ui, "Levels", &mut self.levels, 2.0..=32.0)
+        widgets::slider(ui, "Levels", &mut self.levels, 2.0..=256.0)
     }
 
     fn apply(&self, image: &mut image::RgbaImage) {
