@@ -646,12 +646,6 @@ impl eframe::App for KiflaApp {
                     return;
                 };
 
-                let texture = if comparing {
-                    self.original_texture.clone().unwrap_or(texture)
-                } else {
-                    texture
-                };
-
                 let full = ui.available_rect_before_wrap();
                 let ruler = 20.0;
                 let rect = egui::Rect::from_min_max(
@@ -695,8 +689,12 @@ impl eframe::App for KiflaApp {
                     egui::Rect::from_center_size(rect.center() + self.pan, tex_size * self.zoom);
                 self.view = Some((rect, image_rect.min));
                 let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                let draw_id = match (comparing, &self.original_texture) {
+                    (true, Some(original)) => original.id(),
+                    _ => texture.id(),
+                };
                 ui.painter_at(rect)
-                    .image(texture.id(), image_rect, uv, egui::Color32::WHITE);
+                    .image(draw_id, image_rect, uv, egui::Color32::WHITE);
 
                 if let Some(cursor) = response.hover_pos() {
                     let painter = ui.painter_at(rect);
