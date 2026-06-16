@@ -6,6 +6,91 @@ use egui::{Key, KeyboardShortcut, Modifiers};
 use crate::operation::{Operation, OperationGroup};
 use crate::operations;
 
+fn nice_step(min_units: f32) -> f32 {
+    let min = min_units.max(1.0);
+    let pow = 10f32.powf(min.log10().floor());
+    for m in [1.0, 2.0, 5.0] {
+        if m * pow >= min {
+            return m * pow;
+        }
+    }
+    10.0 * pow
+}
+
+fn draw_rulers(
+    ui: &egui::Ui,
+    full: egui::Rect,
+    view: egui::Rect,
+    image_min: egui::Pos2,
+    zoom: f32,
+) {
+    if zoom <= 0.0 {
+        return;
+    }
+
+    let painter = ui.painter_at(full);
+    let bg = egui::Color32::from_gray(45);
+    let line = egui::Color32::from_gray(120);
+    let text = egui::Color32::from_gray(190);
+    let font = egui::FontId::proportional(9.0);
+    let step = nice_step(70.0 / zoom);
+
+    painter.rect_filled(
+        egui::Rect::from_min_max(full.min, egui::pos2(full.right(), view.top())),
+        0.0,
+        bg,
+    );
+    painter.rect_filled(
+        egui::Rect::from_min_max(full.min, egui::pos2(view.left(), full.bottom())),
+        0.0,
+        bg,
+    );
+
+    let x_start = (view.left() - image_min.x) / zoom;
+    let x_end = (view.right() - image_min.x) / zoom;
+    let mut t = (x_start / step).ceil() * step;
+    while t <= x_end {
+        let x = image_min.x + t * zoom;
+        if x >= view.left() {
+            painter.line_segment(
+                [egui::pos2(x, view.top() - 6.0), egui::pos2(x, view.top())],
+                egui::Stroke::new(1.0, line),
+            );
+            painter.text(
+                egui::pos2(x + 2.0, full.top() + 1.0),
+                egui::Align2::LEFT_TOP,
+                format!("{}", t.round() as i32),
+                font.clone(),
+                text,
+            );
+        }
+        t += step;
+    }
+
+    let y_start = (view.top() - image_min.y) / zoom;
+    let y_end = (view.bottom() - image_min.y) / zoom;
+    let mut t = (y_start / step).ceil() * step;
+    while t <= y_end {
+        let y = image_min.y + t * zoom;
+        if y >= view.top() {
+            painter.line_segment(
+                [egui::pos2(view.left() - 6.0, y), egui::pos2(view.left(), y)],
+                egui::Stroke::new(1.0, line),
+            );
+            painter.text(
+                egui::pos2(full.left() + 1.0, y + 2.0),
+                egui::Align2::LEFT_TOP,
+                format!("{}", t.round() as i32),
+                font.clone(),
+                text,
+            );
+        }
+        t += step;
+    }
+
+    painter.rect_filled(egui::Rect::from_min_max(full.min, view.min), 0.0, bg);
+}
+
 fn operation_menu(
     ui: &mut egui::Ui,
     groups: &[OperationGroup],
@@ -284,65 +369,69 @@ impl eframe::App for KiflaApp {
                 .resizable(true)
                 .default_width(240.0)
                 .show(ctx, |ui| {
-                    ui.heading("History");
+                    ui.heading("Edits");
                     ui.separator();
 
                     let mut remove_index = None;
-                    for (i, entry) in self.history.iter_mut().enumerate() {
-                        if entry.operation.has_settings() {
-                            let id = egui::Id::new(("history_entry", i));
-                            let state =
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            for (i, entry) in self.history.iter_mut().enumerate() {
+                                if entry.operation.has_settings() {
+                                    let id = egui::Id::new(("history_entry", i));
+                                    let state =
                                 egui::collapsing_header::CollapsingState::load_with_default_open(
                                     ui.ctx(),
                                     id,
                                     false,
                                 );
-                            let header = state.show_header(ui, |ui| {
-                                if ui.checkbox(&mut entry.enabled, "").changed() {
-                                    history_dirty = true;
-                                }
-                                let enabled = entry.enabled;
-                                ui.add_enabled_ui(enabled, |ui| {
-                                    ui.label(entry.operation.name());
-                                });
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        if ui.small_button("×").clicked() {
-                                            remove_index = Some(i);
+                                    let header = state.show_header(ui, |ui| {
+                                        if ui.checkbox(&mut entry.enabled, "").changed() {
+                                            history_dirty = true;
                                         }
-                                    },
-                                );
-                            });
-                            let enabled = entry.enabled;
-                            header.body(|ui| {
-                                ui.add_enabled_ui(enabled, |ui| {
-                                    if entry.operation.settings_ui(ui) {
-                                        history_dirty = true;
-                                    }
-                                });
-                            });
-                        } else {
-                            ui.horizontal(|ui| {
-                                ui.add_space(ui.spacing().indent);
-                                if ui.checkbox(&mut entry.enabled, "").changed() {
-                                    history_dirty = true;
-                                }
-                                let enabled = entry.enabled;
-                                ui.add_enabled_ui(enabled, |ui| {
-                                    ui.label(entry.operation.name());
-                                });
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        if ui.small_button("×").clicked() {
-                                            remove_index = Some(i);
+                                        let enabled = entry.enabled;
+                                        ui.add_enabled_ui(enabled, |ui| {
+                                            ui.label(entry.operation.name());
+                                        });
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                if ui.small_button("×").clicked() {
+                                                    remove_index = Some(i);
+                                                }
+                                            },
+                                        );
+                                    });
+                                    let enabled = entry.enabled;
+                                    header.body(|ui| {
+                                        ui.add_enabled_ui(enabled, |ui| {
+                                            if entry.operation.settings_ui(ui) {
+                                                history_dirty = true;
+                                            }
+                                        });
+                                    });
+                                } else {
+                                    ui.horizontal(|ui| {
+                                        ui.add_space(ui.spacing().indent);
+                                        if ui.checkbox(&mut entry.enabled, "").changed() {
+                                            history_dirty = true;
                                         }
-                                    },
-                                );
-                            });
-                        }
-                    }
+                                        let enabled = entry.enabled;
+                                        ui.add_enabled_ui(enabled, |ui| {
+                                            ui.label(entry.operation.name());
+                                        });
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                if ui.small_button("×").clicked() {
+                                                    remove_index = Some(i);
+                                                }
+                                            },
+                                        );
+                                    });
+                                }
+                            }
+                        });
 
                     if let Some(i) = remove_index {
                         self.history.remove(i);
@@ -353,65 +442,93 @@ impl eframe::App for KiflaApp {
 
         let canvas_frame =
             egui::Frame::central_panel(&ctx.style()).fill(egui::Color32::from_gray(28));
-        egui::CentralPanel::default().frame(canvas_frame).show(ctx, |ui| {
-            if let Some(error) = &self.error {
-                ui.colored_label(egui::Color32::LIGHT_RED, error);
-            }
-
-            let Some(texture) = self.texture.clone() else {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(ui.available_height() / 2.0 - 30.0);
-                    ui.label(egui::RichText::new("Open a texture to get started...").weak());
-                    ui.add_space(8.0);
-                    ui.scope(|ui| {
-                        ui.spacing_mut().button_padding = egui::vec2(16.0, 6.0);
-                        if ui.button("📂 Open…").clicked() {
-                            open_requested = true;
-                        }
-                    });
-                });
-                return;
-            };
-
-            let rect = ui.available_rect_before_wrap();
-            let response = ui.allocate_rect(rect, egui::Sense::drag());
-            let tex_size = texture.size_vec2();
-
-            if self.needs_fit {
-                self.zoom = (rect.width() / tex_size.x).min(rect.height() / tex_size.y);
-                self.pan = egui::Vec2::ZERO;
-                self.needs_fit = false;
-            }
-
-            if response.dragged() {
-                self.pan += response.drag_delta();
-            }
-
-            if response.hovered() {
-                let scroll = ui.input(|i| i.smooth_scroll_delta.y);
-                if scroll != 0.0 {
-                    let new_zoom = (self.zoom * (scroll * 0.0015).exp()).clamp(0.05, 64.0);
-                    if let Some(cursor) = response.hover_pos() {
-                        let to_cursor = cursor - rect.center();
-                        let factor = new_zoom / self.zoom;
-                        self.pan = to_cursor - (to_cursor - self.pan) * factor;
-                    }
-                    self.zoom = new_zoom;
+        egui::CentralPanel::default()
+            .frame(canvas_frame)
+            .show(ctx, |ui| {
+                if let Some(error) = &self.error {
+                    ui.colored_label(egui::Color32::LIGHT_RED, error);
                 }
-            }
 
-            if response.dragged() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-            } else if response.hovered() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
-            }
+                let Some(texture) = self.texture.clone() else {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(ui.available_height() / 2.0 - 30.0);
+                        ui.label(egui::RichText::new("Open a texture to get started...").weak());
+                        ui.add_space(8.0);
+                        ui.scope(|ui| {
+                            ui.spacing_mut().button_padding = egui::vec2(16.0, 6.0);
+                            if ui.button("📂 Open…").clicked() {
+                                open_requested = true;
+                            }
+                        });
+                    });
+                    return;
+                };
 
-            let image_rect =
-                egui::Rect::from_center_size(rect.center() + self.pan, tex_size * self.zoom);
-            let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
-            ui.painter_at(rect)
-                .image(texture.id(), image_rect, uv, egui::Color32::WHITE);
-        });
+                let full = ui.available_rect_before_wrap();
+                let ruler = 20.0;
+                let rect = egui::Rect::from_min_max(
+                    egui::pos2(full.left() + ruler, full.top() + ruler),
+                    full.max,
+                );
+                let response = ui.allocate_rect(rect, egui::Sense::drag());
+                let tex_size = texture.size_vec2();
+
+                if self.needs_fit {
+                    self.zoom = (rect.width() / tex_size.x).min(rect.height() / tex_size.y);
+                    self.pan = egui::Vec2::ZERO;
+                    self.needs_fit = false;
+                }
+
+                if response.dragged() {
+                    self.pan += response.drag_delta();
+                }
+
+                if response.hovered() {
+                    let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+                    if scroll != 0.0 {
+                        let new_zoom = (self.zoom * (scroll * 0.0015).exp()).clamp(0.05, 64.0);
+                        if let Some(cursor) = response.hover_pos() {
+                            let to_cursor = cursor - rect.center();
+                            let factor = new_zoom / self.zoom;
+                            self.pan = to_cursor - (to_cursor - self.pan) * factor;
+                        }
+                        self.zoom = new_zoom;
+                    }
+                }
+
+                if response.dragged() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                } else if response.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+                }
+
+                let image_rect =
+                    egui::Rect::from_center_size(rect.center() + self.pan, tex_size * self.zoom);
+                let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                ui.painter_at(rect)
+                    .image(texture.id(), image_rect, uv, egui::Color32::WHITE);
+
+                if let Some(cursor) = response.hover_pos() {
+                    let painter = ui.painter_at(rect);
+                    let guide = egui::Stroke::new(1.0, egui::Color32::from_white_alpha(90));
+                    painter.line_segment(
+                        [
+                            egui::pos2(cursor.x, rect.top()),
+                            egui::pos2(cursor.x, rect.bottom()),
+                        ],
+                        guide,
+                    );
+                    painter.line_segment(
+                        [
+                            egui::pos2(rect.left(), cursor.y),
+                            egui::pos2(rect.right(), cursor.y),
+                        ],
+                        guide,
+                    );
+                }
+
+                draw_rulers(ui, full, rect, image_rect.min, self.zoom);
+            });
 
         if open_requested {
             self.open_texture(ctx);

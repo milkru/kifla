@@ -28,8 +28,7 @@ fn main() -> eframe::Result<()> {
             style.visuals.window_fill = egui::Color32::from_gray(45);
             style.visuals.override_text_color = Some(egui::Color32::from_gray(235));
             style.visuals.selection.bg_fill = egui::Color32::from_gray(150);
-            style.visuals.selection.stroke =
-                egui::Stroke::new(1.0, egui::Color32::from_gray(220));
+            style.visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_gray(220));
             cc.egui_ctx.set_style(style);
             Box::<KiflaApp>::default()
         }),

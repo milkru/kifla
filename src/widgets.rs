@@ -78,10 +78,7 @@ pub fn curve_editor(ui: &mut egui::Ui, points: &mut Vec<egui::Pos2>) -> bool {
             to_screen(egui::pos2(x, curve_value(points, x).clamp(0.0, 1.0)))
         })
         .collect();
-    painter.add(egui::Shape::line(
-        line,
-        egui::Stroke::new(1.5, curve_color),
-    ));
+    painter.add(egui::Shape::line(line, egui::Stroke::new(1.5, curve_color)));
 
     let mut commit = false;
     let mut on_point = false;
@@ -92,7 +89,11 @@ pub fn curve_editor(ui: &mut egui::Ui, points: &mut Vec<egui::Pos2>) -> bool {
         let mut radius = 3.5;
         if enabled {
             let point_rect = egui::Rect::from_center_size(center, egui::vec2(14.0, 14.0));
-            let pr = ui.interact(point_rect, response.id.with(i), egui::Sense::click_and_drag());
+            let pr = ui.interact(
+                point_rect,
+                response.id.with(i),
+                egui::Sense::click_and_drag(),
+            );
             if pr.hovered() || pr.dragged() {
                 on_point = true;
                 radius = 5.0;
@@ -147,9 +148,8 @@ pub fn curve_value(points: &[egui::Pos2], x: f32) -> f32 {
         return points[n - 1].y;
     }
 
-    let secant = |i: usize| {
-        (points[i + 1].y - points[i].y) / (points[i + 1].x - points[i].x).max(1e-6)
-    };
+    let secant =
+        |i: usize| (points[i + 1].y - points[i].y) / (points[i + 1].x - points[i].x).max(1e-6);
     let tangent = |i: usize| {
         if i == 0 {
             secant(0)

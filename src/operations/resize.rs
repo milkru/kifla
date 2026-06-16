@@ -103,7 +103,9 @@ impl Operation for Resize {
             return;
         }
         *image = match self.sampling {
-            Sampling::Nearest => imageops::resize(image, width, height, imageops::FilterType::Nearest),
+            Sampling::Nearest => {
+                imageops::resize(image, width, height, imageops::FilterType::Nearest)
+            }
             Sampling::Bilinear => {
                 imageops::resize(image, width, height, imageops::FilterType::Triangle)
             }
