@@ -6,6 +6,9 @@ mod exposure;
 mod hue_saturation;
 mod invert;
 mod levels;
+mod posterize;
+mod selective_color;
+mod threshold;
 mod vibrance;
 
 pub use black_white::BlackWhite;
@@ -16,6 +19,9 @@ pub use exposure::Exposure;
 pub use hue_saturation::HueSaturation;
 pub use invert::Invert;
 pub use levels::Levels;
+pub use posterize::Posterize;
+pub use selective_color::SelectiveColor;
+pub use threshold::Threshold;
 pub use vibrance::Vibrance;
 
 use crate::operation::OperationKind;
@@ -57,8 +63,22 @@ pub static OPERATION_GROUPS: &[&[OperationKind]] = &[
             make: || Box::new(BlackWhite::default()),
         },
     ],
-    &[OperationKind {
-        menu_label: "🔄 Invert…",
-        make: || Box::new(Invert),
-    }],
+    &[
+        OperationKind {
+            menu_label: "🎚 Posterize…",
+            make: || Box::new(Posterize::default()),
+        },
+        OperationKind {
+            menu_label: "🔲 Threshold…",
+            make: || Box::new(Threshold::default()),
+        },
+        OperationKind {
+            menu_label: "🎯 Selective Color…",
+            make: || Box::new(SelectiveColor::default()),
+        },
+        OperationKind {
+            menu_label: "🔄 Invert…",
+            make: || Box::new(Invert),
+        },
+    ],
 ];
