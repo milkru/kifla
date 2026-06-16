@@ -63,8 +63,23 @@ pub fn curve_editor(ui: &mut egui::Ui, points: &mut Vec<egui::Pos2>) -> bool {
         )
     };
 
+    painter.line_segment(
+        [
+            to_screen(egui::pos2(0.0, 0.0)),
+            to_screen(egui::pos2(1.0, 1.0)),
+        ],
+        egui::Stroke::new(1.0, grid),
+    );
+
+    let samples = 96;
+    let line: Vec<egui::Pos2> = (0..=samples)
+        .map(|i| {
+            let x = i as f32 / samples as f32;
+            to_screen(egui::pos2(x, curve_value(points, x).clamp(0.0, 1.0)))
+        })
+        .collect();
     painter.add(egui::Shape::line(
-        points.iter().map(|p| to_screen(*p)).collect(),
+        line,
         egui::Stroke::new(1.5, curve_color),
     ));
 
@@ -118,4 +133,51 @@ pub fn curve_editor(ui: &mut egui::Ui, points: &mut Vec<egui::Pos2>) -> bool {
     }
 
     commit
+}
+
+pub fn curve_value(points: &[egui::Pos2], x: f32) -> f32 {
+    let n = points.len();
+    if n == 0 {
+        return x;
+    }
+    if x <= points[0].x {
+        return points[0].y;
+    }
+    if x >= points[n - 1].x {
+        return points[n - 1].y;
+    }
+
+    let secant = |i: usize| {
+        (points[i + 1].y - points[i].y) / (points[i + 1].x - points[i].x).max(1e-6)
+    };
+    let tangent = |i: usize| {
+        if i == 0 {
+            secant(0)
+        } else if i == n - 1 {
+            secant(n - 2)
+        } else {
+            let (left, right) = (secant(i - 1), secant(i));
+            if left * right <= 0.0 {
+                0.0
+            } else {
+                (left + right) * 0.5
+            }
+        }
+    };
+
+    let mut k = 0;
+    while k + 1 < n && x > points[k + 1].x {
+        k += 1;
+    }
+
+    let h = (points[k + 1].x - points[k].x).max(1e-6);
+    let t = ((x - points[k].x) / h).clamp(0.0, 1.0);
+    let (t2, t3) = (t * t, t * t * t);
+    let m0 = tangent(k) * h;
+    let m1 = tangent(k + 1) * h;
+
+    (2.0 * t3 - 3.0 * t2 + 1.0) * points[k].y
+        + (t3 - 2.0 * t2 + t) * m0
+        + (-2.0 * t3 + 3.0 * t2) * points[k + 1].y
+        + (t3 - t2) * m1
 }
