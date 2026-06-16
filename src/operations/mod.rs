@@ -1,5 +1,6 @@
 mod black_white;
 mod brightness_contrast;
+mod channel_mixer;
 mod color_balance;
 mod curves;
 mod exposure;
@@ -8,11 +9,13 @@ mod invert;
 mod levels;
 mod posterize;
 mod selective_color;
+mod shadows_highlights;
 mod threshold;
 mod vibrance;
 
 pub use black_white::BlackWhite;
 pub use brightness_contrast::BrightnessContrast;
+pub use channel_mixer::ChannelMixer;
 pub use color_balance::ColorBalance;
 pub use curves::Curves;
 pub use exposure::Exposure;
@@ -21,6 +24,7 @@ pub use invert::Invert;
 pub use levels::Levels;
 pub use posterize::Posterize;
 pub use selective_color::SelectiveColor;
+pub use shadows_highlights::ShadowsHighlights;
 pub use threshold::Threshold;
 pub use vibrance::Vibrance;
 
@@ -62,6 +66,10 @@ pub static OPERATION_GROUPS: &[&[OperationKind]] = &[
             menu_label: "🌓 Black & White…",
             make: || Box::new(BlackWhite::default()),
         },
+        OperationKind {
+            menu_label: "🎛 Channel Mixer…",
+            make: || Box::new(ChannelMixer::default()),
+        },
     ],
     &[
         OperationKind {
@@ -81,4 +89,8 @@ pub static OPERATION_GROUPS: &[&[OperationKind]] = &[
             make: || Box::new(Invert),
         },
     ],
+    &[OperationKind {
+        menu_label: "🌗 Shadows / Highlights…",
+        make: || Box::new(ShadowsHighlights::default()),
+    }],
 ];
