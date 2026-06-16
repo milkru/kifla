@@ -37,6 +37,7 @@ impl Operation for Levels {
         changed |= widgets::slider(ui, "Input black", &mut self.in_black, 0.0..=1.0);
         changed |= widgets::slider(ui, "Input white", &mut self.in_white, 0.0..=1.0);
         changed |= widgets::slider(ui, "Gamma", &mut self.gamma, 0.1..=5.0);
+        ui.separator();
         changed |= widgets::slider(ui, "Output black", &mut self.out_black, 0.0..=1.0);
         changed |= widgets::slider(ui, "Output white", &mut self.out_white, 0.0..=1.0);
         changed

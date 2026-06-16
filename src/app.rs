@@ -91,6 +91,39 @@ fn draw_rulers(
     painter.rect_filled(egui::Rect::from_min_max(full.min, view.min), 0.0, bg);
 }
 
+fn save_image(image: &image::RgbaImage, path: &std::path::Path) -> image::ImageResult<()> {
+    let is_ico = path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("ico"));
+    if !is_ico {
+        return image.save(path);
+    }
+
+    let max_dim = image.width().max(image.height()).max(1);
+    let mut sizes: Vec<u32> = [256, 128, 64, 48, 32, 16]
+        .into_iter()
+        .filter(|&n| n <= max_dim)
+        .collect();
+    if sizes.is_empty() {
+        sizes.push(max_dim.min(256));
+    }
+
+    let mut frames = Vec::new();
+    for size in sizes {
+        let resized =
+            image::imageops::resize(image, size, size, image::imageops::FilterType::Lanczos3);
+        frames.push(image::codecs::ico::IcoFrame::as_png(
+            resized.as_raw(),
+            size,
+            size,
+            image::ColorType::Rgba8,
+        )?);
+    }
+
+    let file = std::fs::File::create(path)?;
+    image::codecs::ico::IcoEncoder::new(file).encode_images(&frames)
+}
+
 fn operation_menu(
     ui: &mut egui::Ui,
     groups: &[OperationGroup],
@@ -214,7 +247,7 @@ impl KiflaApp {
             return;
         };
 
-        match result.save(path) {
+        match save_image(result, path) {
             Ok(()) => self.error = None,
             Err(err) => self.error = Some(format!("Failed to save image: {err}")),
         }
@@ -229,7 +262,8 @@ impl KiflaApp {
             .add_filter("PNG", &["png"])
             .add_filter("JPEG", &["jpg", "jpeg"])
             .add_filter("Bitmap", &["bmp"])
-            .add_filter("TGA", &["tga"]);
+            .add_filter("TGA", &["tga"])
+            .add_filter("Icon", &["ico"]);
         if let Some(path) = &self.path {
             if let Some(name) = path.file_name() {
                 dialog = dialog.set_file_name(name.to_string_lossy());
@@ -243,7 +277,7 @@ impl KiflaApp {
             return;
         };
 
-        match result.save(&path) {
+        match save_image(result, &path) {
             Ok(()) => {
                 let name = path
                     .file_name()
@@ -367,8 +401,10 @@ impl eframe::App for KiflaApp {
         if self.original.is_some() && !self.history.is_empty() {
             egui::SidePanel::left("history_panel")
                 .resizable(true)
-                .default_width(240.0)
+                .default_width(258.0)
                 .show(ctx, |ui| {
+                    ui.spacing_mut().slider_width = 150.0;
+
                     ui.heading("Edits");
                     ui.separator();
 

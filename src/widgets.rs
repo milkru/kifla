@@ -14,7 +14,7 @@ pub fn slider(
 
     let mut commit = false;
     ui.scope(|ui| {
-        ui.spacing_mut().interact_size.y = 6.0;
+        ui.spacing_mut().interact_size.y = 9.0;
         ui.style_mut()
             .text_styles
             .insert(egui::TextStyle::Body, egui::FontId::proportional(1.0));

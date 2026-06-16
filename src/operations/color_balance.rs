@@ -31,7 +31,9 @@ impl Operation for ColorBalance {
     fn settings_ui(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;
         changed |= range_ui(ui, "Shadows", &mut self.shadows);
+        ui.separator();
         changed |= range_ui(ui, "Midtones", &mut self.midtones);
+        ui.separator();
         changed |= range_ui(ui, "Highlights", &mut self.highlights);
         changed
     }

@@ -4,16 +4,35 @@ mod operation;
 mod operations;
 mod widgets;
 
+// TODO: each operations default value shouldnt change the image
+
 use eframe::egui;
 
 use app::KiflaApp;
 
+fn load_icon() -> Option<egui::IconData> {
+    let image = image::load_from_memory(include_bytes!("../icon.ico"))
+        .ok()?
+        .to_rgba8();
+    let (width, height) = image.dimensions();
+    Some(egui::IconData {
+        rgba: image.into_raw(),
+        width,
+        height,
+    })
+}
+
 fn main() -> eframe::Result<()> {
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_inner_size([1280.0, 800.0])
+        .with_min_inner_size([800.0, 500.0])
+        .with_title("Kifla");
+    if let Some(icon) = load_icon() {
+        viewport = viewport.with_icon(icon);
+    }
+
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1280.0, 800.0])
-            .with_min_inner_size([800.0, 500.0])
-            .with_title("Kifla"),
+        viewport,
         ..Default::default()
     };
 

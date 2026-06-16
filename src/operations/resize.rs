@@ -84,6 +84,7 @@ impl Operation for Resize {
             let r = ui.add(egui::DragValue::new(&mut self.height).clamp_range(1..=16384));
             changed |= r.drag_released() || (r.changed() && !r.dragged());
         });
+        ui.separator();
         egui::ComboBox::from_id_source("resize_sampling")
             .selected_text(self.sampling.name())
             .show_ui(ui, |ui| {

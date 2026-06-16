@@ -40,7 +40,9 @@ impl Operation for ChannelMixer {
     fn settings_ui(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;
         changed |= output_ui(ui, "Output Red", &mut self.red);
+        ui.separator();
         changed |= output_ui(ui, "Output Green", &mut self.green);
+        ui.separator();
         changed |= output_ui(ui, "Output Blue", &mut self.blue);
         changed
     }
