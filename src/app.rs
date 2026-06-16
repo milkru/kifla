@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::mpsc::{Receiver, TryRecvError};
 
 use eframe::egui;
 use egui::{Key, KeyboardShortcut, Modifiers};
@@ -163,6 +164,9 @@ const SHORTCUT_SAVE_AS: KeyboardShortcut = KeyboardShortcut::new(
 );
 const SHORTCUT_CLOSE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::W);
 const SHORTCUT_QUIT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Q);
+const SHORTCUT_FIT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Num0);
+const COMPARE_KEY: Key = Key::C;
+const SHORTCUT_COMPARE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, COMPARE_KEY);
 
 struct HistoryEntry {
     operation: Box<dyn Operation>,
@@ -174,27 +178,38 @@ pub struct KiflaApp {
     original: Option<image::RgbaImage>,
     result: Option<image::RgbaImage>,
     texture: Option<egui::TextureHandle>,
+    original_texture: Option<egui::TextureHandle>,
     history: Vec<HistoryEntry>,
     size: [usize; 2],
     path: Option<PathBuf>,
     error: Option<String>,
     zoom: f32,
     pan: egui::Vec2,
-    needs_fit: bool,
+    fit: bool,
+    view: Option<(egui::Rect, egui::Pos2)>,
+    pending_open: Option<Receiver<Option<PathBuf>>>,
+    pending_save: Option<Receiver<Option<PathBuf>>>,
 }
 
 impl KiflaApp {
-    fn open_texture(&mut self, ctx: &egui::Context) {
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter(
-                "Images",
-                &["png", "jpg", "jpeg", "bmp", "tga", "tiff", "webp"],
-            )
-            .pick_file()
-        else {
+    fn open_texture(&mut self) {
+        if self.pending_open.is_some() {
             return;
-        };
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let path = rfd::FileDialog::new()
+                .add_filter(
+                    "Images",
+                    &["png", "jpg", "jpeg", "bmp", "tga", "tiff", "webp"],
+                )
+                .pick_file();
+            let _ = tx.send(path);
+        });
+        self.pending_open = Some(rx);
+    }
 
+    fn load_image(&mut self, path: PathBuf, ctx: &egui::Context) {
         match image::open(&path) {
             Ok(img) => {
                 let rgba = img.to_rgba8();
@@ -207,12 +222,18 @@ impl KiflaApp {
                     "Kifla - {name} ({} × {})",
                     size[0], size[1]
                 )));
+                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+                self.original_texture = Some(ctx.load_texture(
+                    "original",
+                    color_image,
+                    egui::TextureOptions::NEAREST,
+                ));
                 self.original = Some(rgba);
                 self.history.clear();
                 self.size = size;
                 self.path = Some(path);
                 self.error = None;
-                self.needs_fit = true;
+                self.fit = true;
                 self.rebuild(ctx);
             }
             Err(err) => {
@@ -253,10 +274,10 @@ impl KiflaApp {
         }
     }
 
-    fn save_as(&mut self, ctx: &egui::Context) {
-        let Some(result) = &self.result else {
+    fn save_as(&mut self) {
+        if self.result.is_none() || self.pending_save.is_some() {
             return;
-        };
+        }
 
         let mut dialog = rfd::FileDialog::new()
             .add_filter("PNG", &["png"])
@@ -266,17 +287,24 @@ impl KiflaApp {
             .add_filter("Icon", &["ico"]);
         if let Some(path) = &self.path {
             if let Some(name) = path.file_name() {
-                dialog = dialog.set_file_name(name.to_string_lossy());
+                dialog = dialog.set_file_name(name.to_string_lossy().into_owned());
             }
             if let Some(dir) = path.parent() {
                 dialog = dialog.set_directory(dir);
             }
         }
 
-        let Some(path) = dialog.save_file() else {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(dialog.save_file());
+        });
+        self.pending_save = Some(rx);
+    }
+
+    fn write_result(&mut self, path: PathBuf, ctx: &egui::Context) {
+        let Some(result) = &self.result else {
             return;
         };
-
         match save_image(result, &path) {
             Ok(()) => {
                 let name = path
@@ -298,10 +326,12 @@ impl KiflaApp {
         self.original = None;
         self.result = None;
         self.texture = None;
+        self.original_texture = None;
         self.history.clear();
         self.size = [0, 0];
         self.path = None;
         self.error = None;
+        self.view = None;
         ctx.send_viewport_cmd(egui::ViewportCommand::Title("Kifla".to_owned()));
     }
 }
@@ -317,6 +347,7 @@ impl eframe::App for KiflaApp {
         let mut add_operation: Option<Box<dyn Operation>> = None;
         let mut history_dirty = false;
 
+        let mut fit_requested = false;
         ctx.input_mut(|i| {
             open_requested |= i.consume_shortcut(&SHORTCUT_OPEN);
             quit_requested |= i.consume_shortcut(&SHORTCUT_QUIT);
@@ -324,8 +355,46 @@ impl eframe::App for KiflaApp {
                 save_requested |= i.consume_shortcut(&SHORTCUT_SAVE);
                 save_as_requested |= i.consume_shortcut(&SHORTCUT_SAVE_AS);
                 close_requested |= i.consume_shortcut(&SHORTCUT_CLOSE);
+                fit_requested |= i.consume_shortcut(&SHORTCUT_FIT);
             }
         });
+        let mut compare_held = loaded && ctx.input(|i| i.key_down(COMPARE_KEY));
+
+        let dropped = ctx.input(|i| {
+            i.raw
+                .dropped_files
+                .iter()
+                .rev()
+                .find_map(|f| f.path.clone())
+        });
+        if let Some(path) = dropped {
+            self.load_image(path, ctx);
+        }
+
+        match self.pending_open.as_ref().map(Receiver::try_recv) {
+            Some(Ok(result)) => {
+                self.pending_open = None;
+                if let Some(path) = result {
+                    self.load_image(path, ctx);
+                }
+            }
+            Some(Err(TryRecvError::Empty)) => ctx.request_repaint(),
+            Some(Err(TryRecvError::Disconnected)) => self.pending_open = None,
+            None => {}
+        }
+        match self.pending_save.as_ref().map(Receiver::try_recv) {
+            Some(Ok(result)) => {
+                self.pending_save = None;
+                if let Some(path) = result {
+                    self.write_result(path, ctx);
+                }
+            }
+            Some(Err(TryRecvError::Empty)) => ctx.request_repaint(),
+            Some(Err(TryRecvError::Disconnected)) => self.pending_save = None,
+            None => {}
+        }
+
+        let loaded = self.texture.is_some();
 
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
@@ -385,6 +454,27 @@ impl eframe::App for KiflaApp {
                         ui.close_menu();
                     }
                 });
+                ui.menu_button("View", |ui| {
+                    if ui
+                        .add_enabled(
+                            loaded,
+                            egui::Button::new("Fit")
+                                .shortcut_text(ui.ctx().format_shortcut(&SHORTCUT_FIT)),
+                        )
+                        .clicked()
+                    {
+                        fit_requested = true;
+                        ui.close_menu();
+                    }
+                    let original = ui.add_enabled(
+                        loaded,
+                        egui::Button::new("Show Original")
+                            .shortcut_text(ui.ctx().format_shortcut(&SHORTCUT_COMPARE)),
+                    );
+                    if original.is_pointer_button_down_on() {
+                        compare_held = true;
+                    }
+                });
                 ui.menu_button("Transform", |ui| {
                     if let Some(op) = operation_menu(ui, operations::TRANSFORM_GROUPS, loaded) {
                         add_operation = Some(op);
@@ -397,6 +487,11 @@ impl eframe::App for KiflaApp {
                 });
             });
         });
+
+        if fit_requested {
+            self.fit = true;
+        }
+        let comparing = compare_held && self.original_texture.is_some();
 
         if self.original.is_some() && !self.history.is_empty() {
             egui::SidePanel::left("history_panel")
@@ -476,6 +571,54 @@ impl eframe::App for KiflaApp {
                 });
         }
 
+        if loaded {
+            egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    let mut coords = String::new();
+                    let sample = if comparing { &self.original } else { &self.result };
+                    if let (Some((view, origin)), Some(image)) = (self.view, sample) {
+                        if let Some(p) = ctx.input(|i| i.pointer.hover_pos()) {
+                            if view.contains(p) {
+                                let x = ((p.x - origin.x) / self.zoom).floor() as i32;
+                                let y = ((p.y - origin.y) / self.zoom).floor() as i32;
+                                if x >= 0
+                                    && y >= 0
+                                    && (x as u32) < image.width()
+                                    && (y as u32) < image.height()
+                                {
+                                    let px = image.get_pixel(x as u32, y as u32);
+                                    coords = format!(
+                                        "{x}, {y}    rgba({}, {}, {}, {})",
+                                        px[0], px[1], px[2], px[3]
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    let zoom_pct = match (self.view, &self.result) {
+                        (Some((view, _)), Some(image)) => {
+                            let fit = (view.width() / image.width() as f32)
+                                .min(view.height() / image.height() as f32);
+                            if fit > 0.0 {
+                                self.zoom / fit * 100.0
+                            } else {
+                                100.0
+                            }
+                        }
+                        _ => 100.0,
+                    };
+                    ui.label(coords);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if comparing {
+                            ui.label("original");
+                            ui.separator();
+                        }
+                        ui.label(format!("{zoom_pct:.0}%"));
+                    });
+                });
+            });
+        }
+
         let canvas_frame =
             egui::Frame::central_panel(&ctx.style()).fill(egui::Color32::from_gray(28));
         egui::CentralPanel::default()
@@ -488,7 +631,10 @@ impl eframe::App for KiflaApp {
                 let Some(texture) = self.texture.clone() else {
                     ui.vertical_centered(|ui| {
                         ui.add_space(ui.available_height() / 2.0 - 30.0);
-                        ui.label(egui::RichText::new("Open a texture to get started...").weak());
+                        ui.label(
+                            egui::RichText::new("Open a texture to get started, or drop one here…")
+                                .weak(),
+                        );
                         ui.add_space(8.0);
                         ui.scope(|ui| {
                             ui.spacing_mut().button_padding = egui::vec2(16.0, 6.0);
@@ -500,6 +646,12 @@ impl eframe::App for KiflaApp {
                     return;
                 };
 
+                let texture = if comparing {
+                    self.original_texture.clone().unwrap_or(texture)
+                } else {
+                    texture
+                };
+
                 let full = ui.available_rect_before_wrap();
                 let ruler = 20.0;
                 let rect = egui::Rect::from_min_max(
@@ -509,14 +661,14 @@ impl eframe::App for KiflaApp {
                 let response = ui.allocate_rect(rect, egui::Sense::drag());
                 let tex_size = texture.size_vec2();
 
-                if self.needs_fit {
+                if self.fit {
                     self.zoom = (rect.width() / tex_size.x).min(rect.height() / tex_size.y);
                     self.pan = egui::Vec2::ZERO;
-                    self.needs_fit = false;
                 }
 
                 if response.dragged() {
                     self.pan += response.drag_delta();
+                    self.fit = false;
                 }
 
                 if response.hovered() {
@@ -529,6 +681,7 @@ impl eframe::App for KiflaApp {
                             self.pan = to_cursor - (to_cursor - self.pan) * factor;
                         }
                         self.zoom = new_zoom;
+                        self.fit = false;
                     }
                 }
 
@@ -540,6 +693,7 @@ impl eframe::App for KiflaApp {
 
                 let image_rect =
                     egui::Rect::from_center_size(rect.center() + self.pan, tex_size * self.zoom);
+                self.view = Some((rect, image_rect.min));
                 let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
                 ui.painter_at(rect)
                     .image(texture.id(), image_rect, uv, egui::Color32::WHITE);
@@ -567,13 +721,13 @@ impl eframe::App for KiflaApp {
             });
 
         if open_requested {
-            self.open_texture(ctx);
+            self.open_texture();
         }
         if save_requested {
             self.save();
         }
         if save_as_requested {
-            self.save_as(ctx);
+            self.save_as();
         }
         if close_requested {
             self.close_texture(ctx);
