@@ -12,6 +12,8 @@ pub trait Operation {
     fn settings_ui(&mut self, _ui: &mut egui::Ui) -> bool {
         false
     }
+
+    fn on_added(&mut self, _width: u32, _height: u32) {}
 }
 
 pub struct OperationKind {

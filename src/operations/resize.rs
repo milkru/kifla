@@ -1,0 +1,157 @@
+use eframe::egui;
+use image::{imageops, Rgba, RgbaImage};
+
+use crate::operation::Operation;
+
+#[derive(Clone, Copy, PartialEq)]
+enum Sampling {
+    Nearest,
+    Bilinear,
+    Bicubic,
+    Lanczos,
+    Min,
+    Max,
+}
+
+impl Sampling {
+    const ALL: [Sampling; 6] = [
+        Sampling::Nearest,
+        Sampling::Bilinear,
+        Sampling::Bicubic,
+        Sampling::Lanczos,
+        Sampling::Min,
+        Sampling::Max,
+    ];
+
+    fn name(self) -> &'static str {
+        match self {
+            Sampling::Nearest => "Nearest",
+            Sampling::Bilinear => "Bilinear",
+            Sampling::Bicubic => "Bicubic",
+            Sampling::Lanczos => "Lanczos",
+            Sampling::Min => "Min",
+            Sampling::Max => "Max",
+        }
+    }
+}
+
+pub struct Resize {
+    width: u32,
+    height: u32,
+    sampling: Sampling,
+}
+
+impl Default for Resize {
+    fn default() -> Self {
+        Self {
+            width: 0,
+            height: 0,
+            sampling: Sampling::Bicubic,
+        }
+    }
+}
+
+impl Operation for Resize {
+    fn name(&self) -> &'static str {
+        "Resize"
+    }
+
+    fn has_settings(&self) -> bool {
+        true
+    }
+
+    fn on_added(&mut self, width: u32, height: u32) {
+        self.width = width;
+        self.height = height;
+    }
+
+    fn settings_ui(&mut self, ui: &mut egui::Ui) -> bool {
+        if !ui.is_enabled() {
+            ui.label(format!("Width: {}", self.width));
+            ui.label(format!("Height: {}", self.height));
+            ui.label(format!("Sampling: {}", self.sampling.name()));
+            return false;
+        }
+
+        let mut changed = false;
+        ui.horizontal(|ui| {
+            ui.label("Width");
+            let r = ui.add(egui::DragValue::new(&mut self.width).clamp_range(1..=16384));
+            changed |= r.drag_released() || (r.changed() && !r.dragged());
+        });
+        ui.horizontal(|ui| {
+            ui.label("Height");
+            let r = ui.add(egui::DragValue::new(&mut self.height).clamp_range(1..=16384));
+            changed |= r.drag_released() || (r.changed() && !r.dragged());
+        });
+        egui::ComboBox::from_id_source("resize_sampling")
+            .selected_text(self.sampling.name())
+            .show_ui(ui, |ui| {
+                for sampling in Sampling::ALL {
+                    changed |= ui
+                        .selectable_value(&mut self.sampling, sampling, sampling.name())
+                        .changed();
+                }
+            });
+        changed
+    }
+
+    fn apply(&self, image: &mut image::RgbaImage) {
+        let width = self.width.max(1);
+        let height = self.height.max(1);
+        if width == image.width() && height == image.height() {
+            return;
+        }
+        *image = match self.sampling {
+            Sampling::Nearest => imageops::resize(image, width, height, imageops::FilterType::Nearest),
+            Sampling::Bilinear => {
+                imageops::resize(image, width, height, imageops::FilterType::Triangle)
+            }
+            Sampling::Bicubic => {
+                imageops::resize(image, width, height, imageops::FilterType::CatmullRom)
+            }
+            Sampling::Lanczos => {
+                imageops::resize(image, width, height, imageops::FilterType::Lanczos3)
+            }
+            Sampling::Min => resample_extreme(image, width, height, false),
+            Sampling::Max => resample_extreme(image, width, height, true),
+        };
+    }
+}
+
+fn luminance(pixel: &Rgba<u8>) -> f32 {
+    0.299 * pixel[0] as f32 + 0.587 * pixel[1] as f32 + 0.114 * pixel[2] as f32
+}
+
+fn resample_extreme(src: &RgbaImage, dst_w: u32, dst_h: u32, take_max: bool) -> RgbaImage {
+    let (src_w, src_h) = (src.width(), src.height());
+    let mut out = RgbaImage::new(dst_w, dst_h);
+
+    let span = |index: u32, dst: u32, src: u32| {
+        let lo = (index as u64 * src as u64 / dst as u64) as u32;
+        let hi = (((index as u64 + 1) * src as u64 + dst as u64 - 1) / dst as u64) as u32;
+        (lo, hi.max(lo + 1).min(src))
+    };
+
+    for oy in 0..dst_h {
+        let (y0, y1) = span(oy, dst_h, src_h);
+        for ox in 0..dst_w {
+            let (x0, x1) = span(ox, dst_w, src_w);
+            let mut best = *src.get_pixel(x0, y0);
+            let mut best_lum = luminance(&best);
+            for yy in y0..y1 {
+                for xx in x0..x1 {
+                    let pixel = src.get_pixel(xx, yy);
+                    let lum = luminance(pixel);
+                    if (take_max && lum > best_lum) || (!take_max && lum < best_lum) {
+                        best = *pixel;
+                        best_lum = lum;
+                    }
+                }
+            }
+            out.put_pixel(ox, oy, best);
+        }
+    }
+
+    out
+}

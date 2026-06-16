@@ -426,7 +426,10 @@ impl eframe::App for KiflaApp {
         if quit_requested {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
-        if let Some(operation) = add_operation {
+        if let Some(mut operation) = add_operation {
+            if let Some(result) = &self.result {
+                operation.on_added(result.width(), result.height());
+            }
             let has_settings = operation.has_settings();
             self.history.push(HistoryEntry {
                 operation,

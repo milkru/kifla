@@ -9,6 +9,7 @@ mod hue_saturation;
 mod invert;
 mod levels;
 mod posterize;
+mod resize;
 mod rotate;
 mod selective_color;
 mod shadows_highlights;
@@ -26,6 +27,7 @@ pub use hue_saturation::HueSaturation;
 pub use invert::Invert;
 pub use levels::Levels;
 pub use posterize::Posterize;
+pub use resize::Resize;
 pub use rotate::{Rotate90Ccw, Rotate90Cw};
 pub use selective_color::SelectiveColor;
 pub use shadows_highlights::ShadowsHighlights;
@@ -137,5 +139,12 @@ pub static TRANSFORM_GROUPS: &[OperationGroup] = &[
                 make: || Box::new(Rotate90Ccw),
             },
         ],
+    },
+    OperationGroup {
+        label: "Size",
+        kinds: &[OperationKind {
+            menu_label: "📐 Resize…",
+            make: || Box::new(Resize::default()),
+        }],
     },
 ];
