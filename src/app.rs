@@ -199,7 +199,7 @@ impl eframe::App for KiflaApp {
                     if ui
                         .add_enabled(
                             loaded,
-                            egui::Button::new("💾 Save")
+                            egui::Button::new("💾 Save…")
                                 .shortcut_text(ui.ctx().format_shortcut(&SHORTCUT_SAVE)),
                         )
                         .clicked()
@@ -221,7 +221,7 @@ impl eframe::App for KiflaApp {
                     if ui
                         .add_enabled(
                             loaded,
-                            egui::Button::new("✖ Close")
+                            egui::Button::new("✖ Close…")
                                 .shortcut_text(ui.ctx().format_shortcut(&SHORTCUT_CLOSE)),
                         )
                         .clicked()
@@ -232,7 +232,7 @@ impl eframe::App for KiflaApp {
                     ui.separator();
                     if ui
                         .add(
-                            egui::Button::new("🚪 Quit")
+                            egui::Button::new("🚪 Quit…")
                                 .shortcut_text(ui.ctx().format_shortcut(&SHORTCUT_QUIT)),
                         )
                         .clicked()
@@ -242,6 +242,7 @@ impl eframe::App for KiflaApp {
                     }
                 });
                 ui.menu_button("Image", |ui| {
+                    ui.style_mut().wrap = Some(false);
                     for (group_index, group) in operations::OPERATION_GROUPS.iter().enumerate() {
                         if group_index > 0 {
                             ui.separator();
@@ -340,7 +341,7 @@ impl eframe::App for KiflaApp {
             let Some(texture) = self.texture.clone() else {
                 ui.vertical_centered(|ui| {
                     ui.add_space(ui.available_height() / 2.0 - 30.0);
-                    ui.label(egui::RichText::new("Open a texture to get started").weak());
+                    ui.label(egui::RichText::new("Open a texture to get started...").weak());
                     ui.add_space(8.0);
                     ui.scope(|ui| {
                         ui.spacing_mut().button_padding = egui::vec2(16.0, 6.0);
