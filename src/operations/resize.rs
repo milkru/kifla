@@ -2,6 +2,7 @@ use eframe::egui;
 use image::{imageops, Rgba, RgbaImage};
 
 use crate::operation::Operation;
+use crate::widgets;
 
 #[derive(Clone, Copy, PartialEq)]
 enum Sampling {
@@ -39,6 +40,8 @@ pub struct Resize {
     width: u32,
     height: u32,
     sampling: Sampling,
+    min_threshold: f32,
+    max_threshold: f32,
 }
 
 impl Default for Resize {
@@ -47,6 +50,8 @@ impl Default for Resize {
             width: 0,
             height: 0,
             sampling: Sampling::Bicubic,
+            min_threshold: 1.0,
+            max_threshold: 0.0,
         }
     }
 }
@@ -70,6 +75,11 @@ impl Operation for Resize {
             ui.label(format!("Width: {}", self.width));
             ui.label(format!("Height: {}", self.height));
             ui.label(format!("Sampling: {}", self.sampling.name()));
+            match self.sampling {
+                Sampling::Min => ui.label(format!("Threshold: {:.2}", self.min_threshold)),
+                Sampling::Max => ui.label(format!("Threshold: {:.2}", self.max_threshold)),
+                _ => ui.label(""),
+            };
             return false;
         }
 
@@ -94,6 +104,15 @@ impl Operation for Resize {
                         .changed();
                 }
             });
+        match self.sampling {
+            Sampling::Min => {
+                changed |= widgets::slider(ui, "Threshold", &mut self.min_threshold, 0.0..=1.0);
+            }
+            Sampling::Max => {
+                changed |= widgets::slider(ui, "Threshold", &mut self.max_threshold, 0.0..=1.0);
+            }
+            _ => {}
+        }
         changed
     }
 
@@ -116,8 +135,8 @@ impl Operation for Resize {
             Sampling::Lanczos => {
                 imageops::resize(image, width, height, imageops::FilterType::Lanczos3)
             }
-            Sampling::Min => resample_extreme(image, width, height, false),
-            Sampling::Max => resample_extreme(image, width, height, true),
+            Sampling::Min => resample_extreme(image, width, height, false, self.min_threshold),
+            Sampling::Max => resample_extreme(image, width, height, true, self.max_threshold),
         };
     }
 }
@@ -126,9 +145,16 @@ fn luminance(pixel: &Rgba<u8>) -> f32 {
     0.299 * pixel[0] as f32 + 0.587 * pixel[1] as f32 + 0.114 * pixel[2] as f32
 }
 
-fn resample_extreme(src: &RgbaImage, dst_w: u32, dst_h: u32, take_max: bool) -> RgbaImage {
+fn resample_extreme(
+    src: &RgbaImage,
+    dst_w: u32,
+    dst_h: u32,
+    take_max: bool,
+    threshold: f32,
+) -> RgbaImage {
     let (src_w, src_h) = (src.width(), src.height());
     let mut out = RgbaImage::new(dst_w, dst_h);
+    let threshold = threshold * 255.0;
 
     let span = |index: u32, dst: u32, src: u32| {
         let lo = (index as u64 * src as u64 / dst as u64) as u32;
@@ -136,23 +162,47 @@ fn resample_extreme(src: &RgbaImage, dst_w: u32, dst_h: u32, take_max: bool) -> 
         (lo, hi.max(lo + 1).min(src))
     };
 
+    let nearest = |index: u32, dst: u32, src: u32| {
+        (((index as u64 * 2 + 1) * src as u64) / (dst as u64 * 2)).min(src as u64 - 1) as u32
+    };
+
     for oy in 0..dst_h {
         let (y0, y1) = span(oy, dst_h, src_h);
+        let ny = nearest(oy, dst_h, src_h);
         for ox in 0..dst_w {
             let (x0, x1) = span(ox, dst_w, src_w);
-            let mut best = *src.get_pixel(x0, y0);
-            let mut best_lum = luminance(&best);
+            let mut eligible: Option<(Rgba<u8>, f32)> = None;
             for yy in y0..y1 {
                 for xx in x0..x1 {
                     let pixel = src.get_pixel(xx, yy);
                     let lum = luminance(pixel);
-                    if (take_max && lum > best_lum) || (!take_max && lum < best_lum) {
-                        best = *pixel;
-                        best_lum = lum;
+                    let passes = if take_max {
+                        lum >= threshold
+                    } else {
+                        lum <= threshold
+                    };
+                    if !passes {
+                        continue;
+                    }
+                    let better = match eligible {
+                        None => true,
+                        Some((_, best_lum)) => {
+                            if take_max {
+                                lum > best_lum
+                            } else {
+                                lum < best_lum
+                            }
+                        }
+                    };
+                    if better {
+                        eligible = Some((*pixel, lum));
                     }
                 }
             }
-            out.put_pixel(ox, oy, best);
+            let pixel = eligible
+                .map(|(p, _)| p)
+                .unwrap_or_else(|| *src.get_pixel(nearest(ox, dst_w, src_w), ny));
+            out.put_pixel(ox, oy, pixel);
         }
     }
 
