@@ -247,7 +247,8 @@ impl eframe::App for KiflaApp {
                         if group_index > 0 {
                             ui.separator();
                         }
-                        for kind in group.iter() {
+                        ui.label(egui::RichText::new(group.label).weak().small());
+                        for kind in group.kinds {
                             if ui
                                 .add_enabled(loaded, egui::Button::new(kind.menu_label))
                                 .clicked()

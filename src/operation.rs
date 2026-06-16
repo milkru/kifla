@@ -18,3 +18,8 @@ pub struct OperationKind {
     pub menu_label: &'static str,
     pub make: fn() -> Box<dyn Operation>,
 }
+
+pub struct OperationGroup {
+    pub label: &'static str,
+    pub kinds: &'static [OperationKind],
+}
