@@ -1,6 +1,6 @@
 # Kifla
 
-Texture Lab is a lightweight desktop application for processing textures.
+Lightweight desktop application for processing textures.
 
 The idea is simple: load a texture, apply one or more operations, preview the result, and save it. The tool is intended as a dedicated workbench for building and using custom texture processing utilities.
 
