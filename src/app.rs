@@ -187,6 +187,8 @@ pub struct KiflaApp {
     pan: egui::Vec2,
     fit: bool,
     view: Option<(egui::Rect, egui::Pos2)>,
+    dirty: bool,
+    last_apply: f64,
     pending_open: Option<Receiver<Option<PathBuf>>>,
     pending_save: Option<Receiver<Option<PathBuf>>>,
 }
@@ -751,8 +753,18 @@ impl eframe::App for KiflaApp {
             }
             history_dirty = true;
         }
-        if history_dirty {
-            self.rebuild(ctx);
+        self.dirty |= history_dirty;
+        if self.dirty {
+            const INTERVAL: f64 = 1.0 / 30.0;
+            let now = ctx.input(|i| i.time);
+            let elapsed = now - self.last_apply;
+            if elapsed >= INTERVAL {
+                self.rebuild(ctx);
+                self.last_apply = now;
+                self.dirty = false;
+            } else {
+                ctx.request_repaint_after(std::time::Duration::from_secs_f64(INTERVAL - elapsed));
+            }
         }
     }
 }

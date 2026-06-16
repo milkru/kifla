@@ -19,7 +19,7 @@ pub fn slider(
             .text_styles
             .insert(egui::TextStyle::Body, egui::FontId::proportional(1.0));
         let response = ui.add(egui::Slider::new(value, range).show_value(false));
-        commit = response.drag_released() || (response.changed() && !response.dragged());
+        commit = response.changed();
     });
     commit
 }
