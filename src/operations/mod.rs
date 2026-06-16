@@ -4,10 +4,12 @@ mod channel_mixer;
 mod color_balance;
 mod curves;
 mod exposure;
+mod flip;
 mod hue_saturation;
 mod invert;
 mod levels;
 mod posterize;
+mod rotate;
 mod selective_color;
 mod shadows_highlights;
 mod threshold;
@@ -19,10 +21,12 @@ pub use channel_mixer::ChannelMixer;
 pub use color_balance::ColorBalance;
 pub use curves::Curves;
 pub use exposure::Exposure;
+pub use flip::{FlipHorizontal, FlipVertical};
 pub use hue_saturation::HueSaturation;
 pub use invert::Invert;
 pub use levels::Levels;
 pub use posterize::Posterize;
+pub use rotate::{Rotate90Ccw, Rotate90Cw};
 pub use selective_color::SelectiveColor;
 pub use shadows_highlights::ShadowsHighlights;
 pub use threshold::Threshold;
@@ -104,5 +108,34 @@ pub static OPERATION_GROUPS: &[OperationGroup] = &[
             menu_label: "🌗 Shadows / Highlights…",
             make: || Box::new(ShadowsHighlights::default()),
         }],
+    },
+];
+
+pub static TRANSFORM_GROUPS: &[OperationGroup] = &[
+    OperationGroup {
+        label: "Flip",
+        kinds: &[
+            OperationKind {
+                menu_label: "🔁 Flip Horizontal",
+                make: || Box::new(FlipHorizontal),
+            },
+            OperationKind {
+                menu_label: "🔃 Flip Vertical",
+                make: || Box::new(FlipVertical),
+            },
+        ],
+    },
+    OperationGroup {
+        label: "Rotate",
+        kinds: &[
+            OperationKind {
+                menu_label: "🔄 Rotate 90° CW",
+                make: || Box::new(Rotate90Cw),
+            },
+            OperationKind {
+                menu_label: "🔄 Rotate 90° CCW",
+                make: || Box::new(Rotate90Ccw),
+            },
+        ],
     },
 ];

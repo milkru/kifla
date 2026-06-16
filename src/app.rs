@@ -3,8 +3,33 @@ use std::path::PathBuf;
 use eframe::egui;
 use egui::{Key, KeyboardShortcut, Modifiers};
 
-use crate::operation::Operation;
+use crate::operation::{Operation, OperationGroup};
 use crate::operations;
+
+fn operation_menu(
+    ui: &mut egui::Ui,
+    groups: &[OperationGroup],
+    loaded: bool,
+) -> Option<Box<dyn Operation>> {
+    ui.style_mut().wrap = Some(false);
+    let mut chosen = None;
+    for (group_index, group) in groups.iter().enumerate() {
+        if group_index > 0 {
+            ui.separator();
+        }
+        ui.label(egui::RichText::new(group.label).weak().small());
+        for kind in group.kinds {
+            if ui
+                .add_enabled(loaded, egui::Button::new(kind.menu_label))
+                .clicked()
+            {
+                chosen = Some((kind.make)());
+                ui.close_menu();
+            }
+        }
+    }
+    chosen
+}
 
 const SHORTCUT_OPEN: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::O);
 const SHORTCUT_SAVE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::S);
@@ -241,22 +266,14 @@ impl eframe::App for KiflaApp {
                         ui.close_menu();
                     }
                 });
+                ui.menu_button("Transform", |ui| {
+                    if let Some(op) = operation_menu(ui, operations::TRANSFORM_GROUPS, loaded) {
+                        add_operation = Some(op);
+                    }
+                });
                 ui.menu_button("Image", |ui| {
-                    ui.style_mut().wrap = Some(false);
-                    for (group_index, group) in operations::OPERATION_GROUPS.iter().enumerate() {
-                        if group_index > 0 {
-                            ui.separator();
-                        }
-                        ui.label(egui::RichText::new(group.label).weak().small());
-                        for kind in group.kinds {
-                            if ui
-                                .add_enabled(loaded, egui::Button::new(kind.menu_label))
-                                .clicked()
-                            {
-                                add_operation = Some((kind.make)());
-                                ui.close_menu();
-                            }
-                        }
+                    if let Some(op) = operation_menu(ui, operations::OPERATION_GROUPS, loaded) {
+                        add_operation = Some(op);
                     }
                 });
             });
