@@ -6,6 +6,7 @@ mod curves;
 mod exposure;
 mod flip;
 mod hue_saturation;
+mod indexed_color;
 mod invert;
 mod levels;
 mod offset;
@@ -25,6 +26,7 @@ pub use curves::Curves;
 pub use exposure::Exposure;
 pub use flip::{FlipHorizontal, FlipVertical};
 pub use hue_saturation::HueSaturation;
+pub use indexed_color::IndexedColor;
 pub use invert::Invert;
 pub use levels::Levels;
 pub use offset::{Offset, OffsetHalfHeight, OffsetHalfWidth};
@@ -59,6 +61,7 @@ pub fn op_from_json(id: &str, params: &serde_json::Value) -> Option<Box<dyn Oper
         "posterize" => de!(Posterize),
         "threshold" => de!(Threshold),
         "selective_color" => de!(SelectiveColor),
+        "indexed_color" => de!(IndexedColor),
         "shadows_highlights" => de!(ShadowsHighlights),
         "offset" => de!(Offset),
         "resize" => de!(Resize),
@@ -134,6 +137,10 @@ pub static OPERATION_GROUPS: &[OperationGroup] = &[
             OperationKind {
                 menu_label: "🎯 Selective Color…",
                 make: || Box::new(SelectiveColor::default()),
+            },
+            OperationKind {
+                menu_label: "🗂 Indexed Color…",
+                make: || Box::new(IndexedColor::default()),
             },
             OperationKind {
                 menu_label: "🔄 Invert",

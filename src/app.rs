@@ -1199,6 +1199,7 @@ impl eframe::App for KiflaApp {
 
         if loaded {
             egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+                ui.visuals_mut().override_text_color = Some(egui::Color32::from_gray(140));
                 ui.horizontal(|ui| {
                     let mut coords = String::new();
                     let sample = if comparing { &self.original } else { &self.result };

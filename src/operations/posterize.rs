@@ -1,7 +1,6 @@
 use eframe::egui;
 
 use crate::operation::{par_pixels, Operation};
-use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Posterize {
@@ -26,7 +25,22 @@ impl Operation for Posterize {
     }
 
     fn settings_ui(&mut self, ui: &mut egui::Ui) -> bool {
-        widgets::slider(ui, "Levels", &mut self.levels, 2.0..=256.0)
+        if !ui.is_enabled() {
+            ui.label(format!("Levels: {}", self.levels.round() as i32));
+            return false;
+        }
+        let mut changed = false;
+        ui.horizontal(|ui| {
+            ui.label("Levels");
+            let r = ui.add(
+                egui::DragValue::new(&mut self.levels)
+                    .clamp_range(2.0..=256.0)
+                    .fixed_decimals(0)
+                    .speed(1.0),
+            );
+            changed |= r.drag_released() || r.lost_focus();
+        });
+        changed
     }
 
     fn apply(&self, image: &mut image::RgbaImage) {
