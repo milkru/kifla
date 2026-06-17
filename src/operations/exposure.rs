@@ -3,6 +3,7 @@ use eframe::egui;
 use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Exposure {
     exposure: f32,
     offset: f32,
@@ -20,6 +21,8 @@ impl Default for Exposure {
 }
 
 impl Operation for Exposure {
+    crate::op_serde!("exposure");
+
     fn name(&self) -> &'static str {
         "Exposure"
     }

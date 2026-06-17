@@ -3,13 +3,15 @@ use eframe::egui;
 use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
-#[derive(Default)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct BrightnessContrast {
     brightness: f32,
     contrast: f32,
 }
 
 impl Operation for BrightnessContrast {
+    crate::op_serde!("brightness_contrast");
+
     fn name(&self) -> &'static str {
         "Brightness / Contrast"
     }

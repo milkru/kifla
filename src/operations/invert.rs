@@ -3,6 +3,8 @@ use crate::operation::{par_pixels, Operation};
 pub struct Invert;
 
 impl Operation for Invert {
+    crate::op_id!("invert");
+
     fn name(&self) -> &'static str {
         "Invert"
     }

@@ -4,7 +4,7 @@ use crate::color;
 use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
-#[derive(Default)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct HueSaturation {
     hue: f32,
     saturation: f32,
@@ -12,6 +12,8 @@ pub struct HueSaturation {
 }
 
 impl Operation for HueSaturation {
+    crate::op_serde!("hue_saturation");
+
     fn name(&self) -> &'static str {
         "Hue / Saturation"
     }

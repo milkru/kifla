@@ -4,13 +4,15 @@ use crate::color;
 use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
-#[derive(Default)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct Vibrance {
     vibrance: f32,
     saturation: f32,
 }
 
 impl Operation for Vibrance {
+    crate::op_serde!("vibrance");
+
     fn name(&self) -> &'static str {
         "Vibrance"
     }

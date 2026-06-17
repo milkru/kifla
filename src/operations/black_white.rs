@@ -3,6 +3,7 @@ use eframe::egui;
 use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct BlackWhite {
     red: f32,
     green: f32,
@@ -22,6 +23,8 @@ impl Default for BlackWhite {
 }
 
 impl Operation for BlackWhite {
+    crate::op_serde!("black_white");
+
     fn name(&self) -> &'static str {
         "Black & White"
     }

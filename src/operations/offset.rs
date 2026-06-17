@@ -34,6 +34,7 @@ fn offset_wrap(image: &RgbaImage, ox: i64, oy: i64) -> RgbaImage {
     out
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Offset {
     x: i32,
     y: i32,
@@ -53,6 +54,8 @@ impl Default for Offset {
 }
 
 impl Operation for Offset {
+    crate::op_serde!("offset");
+
     fn name(&self) -> &'static str {
         "Offset"
     }
@@ -100,6 +103,8 @@ impl Operation for Offset {
 pub struct OffsetHalfWidth;
 
 impl Operation for OffsetHalfWidth {
+    crate::op_id!("offset_half_width");
+
     fn name(&self) -> &'static str {
         "Offset Half Width"
     }
@@ -112,6 +117,8 @@ impl Operation for OffsetHalfWidth {
 pub struct OffsetHalfHeight;
 
 impl Operation for OffsetHalfHeight {
+    crate::op_id!("offset_half_height");
+
     fn name(&self) -> &'static str {
         "Offset Half Height"
     }

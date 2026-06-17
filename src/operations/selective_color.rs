@@ -4,7 +4,7 @@ use crate::color;
 use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 enum Family {
     Reds,
     Yellows,
@@ -71,6 +71,7 @@ impl Family {
 }
 
 #[derive(Default)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct SelectiveColor {
     family: Family,
     cyan: f32,
@@ -80,6 +81,8 @@ pub struct SelectiveColor {
 }
 
 impl Operation for SelectiveColor {
+    crate::op_serde!("selective_color");
+
     fn name(&self) -> &'static str {
         "Selective Color"
     }

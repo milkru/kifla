@@ -36,7 +36,42 @@ pub use shadows_highlights::ShadowsHighlights;
 pub use threshold::Threshold;
 pub use vibrance::Vibrance;
 
-use crate::operation::{OperationGroup, OperationKind};
+use crate::operation::{Operation, OperationGroup, OperationKind};
+
+pub fn op_from_json(id: &str, params: &serde_json::Value) -> Option<Box<dyn Operation>> {
+    macro_rules! de {
+        ($t:ty) => {
+            serde_json::from_value::<$t>(params.clone())
+                .ok()
+                .map(|o| Box::new(o) as Box<dyn Operation>)
+        };
+    }
+    match id {
+        "brightness_contrast" => de!(BrightnessContrast),
+        "levels" => de!(Levels),
+        "curves" => de!(Curves),
+        "exposure" => de!(Exposure),
+        "hue_saturation" => de!(HueSaturation),
+        "vibrance" => de!(Vibrance),
+        "color_balance" => de!(ColorBalance),
+        "black_white" => de!(BlackWhite),
+        "channel_mixer" => de!(ChannelMixer),
+        "posterize" => de!(Posterize),
+        "threshold" => de!(Threshold),
+        "selective_color" => de!(SelectiveColor),
+        "shadows_highlights" => de!(ShadowsHighlights),
+        "offset" => de!(Offset),
+        "resize" => de!(Resize),
+        "invert" => Some(Box::new(Invert)),
+        "flip_horizontal" => Some(Box::new(FlipHorizontal)),
+        "flip_vertical" => Some(Box::new(FlipVertical)),
+        "rotate_90_cw" => Some(Box::new(Rotate90Cw)),
+        "rotate_90_ccw" => Some(Box::new(Rotate90Ccw)),
+        "offset_half_width" => Some(Box::new(OffsetHalfWidth)),
+        "offset_half_height" => Some(Box::new(OffsetHalfHeight)),
+        _ => None,
+    }
+}
 
 pub static OPERATION_GROUPS: &[OperationGroup] = &[
     OperationGroup {

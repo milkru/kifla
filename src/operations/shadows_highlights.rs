@@ -3,13 +3,15 @@ use eframe::egui;
 use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
-#[derive(Default)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct ShadowsHighlights {
     shadows: f32,
     highlights: f32,
 }
 
 impl Operation for ShadowsHighlights {
+    crate::op_serde!("shadows_highlights");
+
     fn name(&self) -> &'static str {
         "Shadows / Highlights"
     }

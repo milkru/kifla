@@ -3,6 +3,7 @@ use eframe::egui;
 use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Curves {
     points: Vec<egui::Pos2>,
 }
@@ -16,6 +17,8 @@ impl Default for Curves {
 }
 
 impl Operation for Curves {
+    crate::op_serde!("curves");
+
     fn name(&self) -> &'static str {
         "Curves"
     }

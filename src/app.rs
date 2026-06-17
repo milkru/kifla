@@ -273,6 +273,24 @@ const SHORTCUT_QUIT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, K
 const SHORTCUT_FIT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Num0);
 const SHORTCUT_ADD: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::A);
 const SHORTCUT_ABOUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F1);
+
+/// Bump when an existing operation's parameters change in an incompatible way.
+/// Adding brand-new operations does not require a bump.
+const STACK_VERSION: u32 = 1;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct StackEntry {
+    id: String,
+    enabled: bool,
+    #[serde(default)]
+    params: serde_json::Value,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct StackFile {
+    version: u32,
+    edits: Vec<StackEntry>,
+}
 const COMPARE_KEY: Key = Key::C;
 const SHORTCUT_COMPARE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, COMPARE_KEY);
 
@@ -309,6 +327,8 @@ pub struct KiflaApp {
     last_apply: f64,
     pending_open: Option<Receiver<Option<PathBuf>>>,
     pending_save: Option<Receiver<Option<PathBuf>>>,
+    pending_import: Option<Receiver<Option<PathBuf>>>,
+    pending_export: Option<Receiver<Option<PathBuf>>>,
 }
 
 impl KiflaApp {
@@ -349,7 +369,6 @@ impl KiflaApp {
                     egui::TextureOptions::NEAREST,
                 ));
                 self.original = Some(rgba);
-                self.edits.clear();
                 self.size = size;
                 self.path = Some(path);
                 self.error = None;
@@ -440,6 +459,98 @@ impl KiflaApp {
             }
             Err(err) => self.error = Some(format!("Failed to save image: {err}")),
         }
+    }
+
+    fn export_stack(&mut self) {
+        if self.pending_export.is_some() {
+            return;
+        }
+        let mut dialog = rfd::FileDialog::new()
+            .add_filter("kifla stack", &["kstack"])
+            .set_file_name("edits.kstack");
+        if let Some(dir) = self.path.as_ref().and_then(|p| p.parent()) {
+            dialog = dialog.set_directory(dir);
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(dialog.save_file());
+        });
+        self.pending_export = Some(rx);
+    }
+
+    fn write_stack(&mut self, path: PathBuf) {
+        let edits = self
+            .edits
+            .iter()
+            .map(|e| StackEntry {
+                id: e.operation.id().to_owned(),
+                enabled: e.enabled,
+                params: e.operation.to_json(),
+            })
+            .collect();
+        let file = StackFile {
+            version: STACK_VERSION,
+            edits,
+        };
+        match serde_json::to_string_pretty(&file) {
+            Ok(json) => match std::fs::write(&path, json) {
+                Ok(()) => self.error = None,
+                Err(err) => self.error = Some(format!("Failed to write stack: {err}")),
+            },
+            Err(err) => self.error = Some(format!("Failed to serialize stack: {err}")),
+        }
+    }
+
+    fn import_stack(&mut self) {
+        if self.pending_import.is_some() {
+            return;
+        }
+        let dialog = rfd::FileDialog::new().add_filter("kifla stack", &["kstack"]);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(dialog.pick_file());
+        });
+        self.pending_import = Some(rx);
+    }
+
+    fn read_stack(&mut self, path: PathBuf, ctx: &egui::Context) {
+        let text = match std::fs::read_to_string(&path) {
+            Ok(t) => t,
+            Err(err) => {
+                self.error = Some(format!("Failed to read stack: {err}"));
+                return;
+            }
+        };
+        let file: StackFile = match serde_json::from_str(&text) {
+            Ok(f) => f,
+            Err(err) => {
+                self.error = Some(format!("Not a valid stack file: {err}"));
+                return;
+            }
+        };
+        if file.version != STACK_VERSION {
+            self.error = Some(format!(
+                "Incompatible stack version {} (this build expects {STACK_VERSION}).",
+                file.version
+            ));
+            return;
+        }
+        let mut edits = Vec::with_capacity(file.edits.len());
+        for entry in file.edits {
+            let Some(operation) = operations::op_from_json(&entry.id, &entry.params) else {
+                self.error = Some(format!("Unknown operation \"{}\" in stack.", entry.id));
+                return;
+            };
+            edits.push(EditEntry {
+                id: self.next_id,
+                operation,
+                enabled: entry.enabled,
+            });
+            self.next_id += 1;
+        }
+        self.edits = edits;
+        self.error = None;
+        self.rebuild(ctx);
     }
 
     fn close_texture(&mut self, ctx: &egui::Context) {
@@ -565,6 +676,8 @@ impl eframe::App for KiflaApp {
         let mut save_as_requested = false;
         let mut close_requested = false;
         let mut quit_requested = false;
+        let mut import_requested = false;
+        let mut export_requested = false;
         let mut add_operation: Option<Box<dyn Operation>> = None;
         let mut edits_dirty = false;
 
@@ -622,6 +735,28 @@ impl eframe::App for KiflaApp {
             Some(Err(TryRecvError::Disconnected)) => self.pending_save = None,
             None => {}
         }
+        match self.pending_import.as_ref().map(Receiver::try_recv) {
+            Some(Ok(result)) => {
+                self.pending_import = None;
+                if let Some(path) = result {
+                    self.read_stack(path, ctx);
+                }
+            }
+            Some(Err(TryRecvError::Empty)) => ctx.request_repaint(),
+            Some(Err(TryRecvError::Disconnected)) => self.pending_import = None,
+            None => {}
+        }
+        match self.pending_export.as_ref().map(Receiver::try_recv) {
+            Some(Ok(result)) => {
+                self.pending_export = None;
+                if let Some(path) = result {
+                    self.write_stack(path);
+                }
+            }
+            Some(Err(TryRecvError::Empty)) => ctx.request_repaint(),
+            Some(Err(TryRecvError::Disconnected)) => self.pending_export = None,
+            None => {}
+        }
 
         let loaded = self.texture.is_some();
 
@@ -670,6 +805,21 @@ impl eframe::App for KiflaApp {
                         .clicked()
                     {
                         close_requested = true;
+                        ui.close_menu();
+                    }
+                    ui.separator();
+                    if ui
+                        .add_enabled(loaded, egui::Button::new("📥 Import Stack…"))
+                        .clicked()
+                    {
+                        import_requested = true;
+                        ui.close_menu();
+                    }
+                    if ui
+                        .add_enabled(loaded, egui::Button::new("📤 Export Stack…"))
+                        .clicked()
+                    {
+                        export_requested = true;
                         ui.close_menu();
                     }
                     ui.separator();
@@ -1242,6 +1392,12 @@ impl eframe::App for KiflaApp {
         }
         if close_requested {
             self.close_texture(ctx);
+        }
+        if import_requested {
+            self.import_stack();
+        }
+        if export_requested {
+            self.export_stack();
         }
         if quit_requested {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);

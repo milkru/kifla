@@ -3,7 +3,7 @@ use eframe::egui;
 use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
-#[derive(Default)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct ColorBalance {
     shadows: [f32; 3],
     midtones: [f32; 3],
@@ -20,6 +20,8 @@ fn range_ui(ui: &mut egui::Ui, title: &str, amounts: &mut [f32; 3]) -> bool {
 }
 
 impl Operation for ColorBalance {
+    crate::op_serde!("color_balance");
+
     fn name(&self) -> &'static str {
         "Color Balance"
     }

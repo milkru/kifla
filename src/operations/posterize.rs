@@ -3,6 +3,7 @@ use eframe::egui;
 use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Posterize {
     levels: f32,
 }
@@ -14,6 +15,8 @@ impl Default for Posterize {
 }
 
 impl Operation for Posterize {
+    crate::op_serde!("posterize");
+
     fn name(&self) -> &'static str {
         "Posterize"
     }

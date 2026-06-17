@@ -5,6 +5,8 @@ use crate::operation::Operation;
 pub struct FlipHorizontal;
 
 impl Operation for FlipHorizontal {
+    crate::op_id!("flip_horizontal");
+
     fn name(&self) -> &'static str {
         "Flip Horizontal"
     }
@@ -17,6 +19,8 @@ impl Operation for FlipHorizontal {
 pub struct FlipVertical;
 
 impl Operation for FlipVertical {
+    crate::op_id!("flip_vertical");
+
     fn name(&self) -> &'static str {
         "Flip Vertical"
     }

@@ -3,6 +3,7 @@ use eframe::egui;
 use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Levels {
     in_black: f32,
     in_white: f32,
@@ -24,6 +25,8 @@ impl Default for Levels {
 }
 
 impl Operation for Levels {
+    crate::op_serde!("levels");
+
     fn name(&self) -> &'static str {
         "Levels"
     }

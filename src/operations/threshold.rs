@@ -3,6 +3,7 @@ use eframe::egui;
 use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Threshold {
     level: f32,
     amount: f32,
@@ -18,6 +19,8 @@ impl Default for Threshold {
 }
 
 impl Operation for Threshold {
+    crate::op_serde!("threshold");
+
     fn name(&self) -> &'static str {
         "Threshold"
     }

@@ -5,7 +5,7 @@ use rayon::prelude::*;
 use crate::operation::Operation;
 use crate::widgets;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 enum Sampling {
     Nearest,
     Bilinear,
@@ -37,6 +37,7 @@ impl Sampling {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Resize {
     width: u32,
     height: u32,
@@ -58,6 +59,8 @@ impl Default for Resize {
 }
 
 impl Operation for Resize {
+    crate::op_serde!("resize");
+
     fn name(&self) -> &'static str {
         "Resize"
     }

@@ -3,6 +3,7 @@ use eframe::egui;
 use crate::operation::{par_pixels, Operation};
 use crate::widgets;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct ChannelMixer {
     red: [f32; 3],
     green: [f32; 3],
@@ -29,6 +30,8 @@ fn output_ui(ui: &mut egui::Ui, title: &str, weights: &mut [f32; 3]) -> bool {
 }
 
 impl Operation for ChannelMixer {
+    crate::op_serde!("channel_mixer");
+
     fn name(&self) -> &'static str {
         "Channel Mixer"
     }
