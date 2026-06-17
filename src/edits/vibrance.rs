@@ -1,7 +1,8 @@
 use eframe::egui;
 
 use crate::color;
-use crate::operation::{par_pixels, Operation};
+use crate::edit::Edit;
+use crate::pixel::{par_pixels, to_u8};
 use crate::widgets;
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
@@ -10,8 +11,8 @@ pub struct Vibrance {
     saturation: f32,
 }
 
-impl Operation for Vibrance {
-    crate::op_serde!("vibrance");
+impl Edit for Vibrance {
+    crate::edit_serde!("vibrance");
 
     fn name(&self) -> &'static str {
         "Vibrance"
@@ -40,9 +41,9 @@ impl Operation for Vibrance {
             s = s.clamp(0.0, 1.0);
 
             let (nr, ng, nb) = color::hsl_to_rgb(h, s, l);
-            px[0] = (nr.clamp(0.0, 1.0) * 255.0).round() as u8;
-            px[1] = (ng.clamp(0.0, 1.0) * 255.0).round() as u8;
-            px[2] = (nb.clamp(0.0, 1.0) * 255.0).round() as u8;
+            px[0] = to_u8(nr);
+            px[1] = to_u8(ng);
+            px[2] = to_u8(nb);
         });
     }
 }

@@ -1,6 +1,7 @@
 use eframe::egui;
 
-use crate::operation::{par_pixels, Operation};
+use crate::edit::Edit;
+use crate::pixel::par_pixels;
 use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -20,8 +21,8 @@ impl Default for Curves {
     }
 }
 
-impl Operation for Curves {
-    crate::op_serde!("curves");
+impl Edit for Curves {
+    crate::edit_serde!("curves");
 
     fn name(&self) -> &'static str {
         "Curves"

@@ -2,7 +2,7 @@ use eframe::egui;
 use image::RgbaImage;
 use rayon::prelude::*;
 
-use crate::operation::Operation;
+use crate::edit::Edit;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Repeat {
@@ -16,8 +16,8 @@ impl Default for Repeat {
     }
 }
 
-impl Operation for Repeat {
-    crate::op_serde!("repeat");
+impl Edit for Repeat {
+    crate::edit_serde!("repeat");
 
     fn name(&self) -> &'static str {
         "Repeat"

@@ -4,8 +4,8 @@ use std::sync::mpsc::{Receiver, TryRecvError};
 use eframe::egui;
 use egui::{Key, KeyboardShortcut, Modifiers};
 
-use crate::operation::{Operation, OperationGroup};
-use crate::operations;
+use crate::edit::{Edit, EditGroup};
+use crate::edits;
 
 fn nice_step(min_units: f32) -> f32 {
     let min = min_units.max(1.0);
@@ -162,11 +162,7 @@ fn save_image(image: &image::RgbaImage, path: &std::path::Path) -> image::ImageR
     image::codecs::ico::IcoEncoder::new(file).encode_images(&frames)
 }
 
-fn operation_menu(
-    ui: &mut egui::Ui,
-    groups: &[OperationGroup],
-    loaded: bool,
-) -> Option<Box<dyn Operation>> {
+fn edit_menu(ui: &mut egui::Ui, groups: &[EditGroup], loaded: bool) -> Option<Box<dyn Edit>> {
     ui.style_mut().wrap = Some(false);
     let mut chosen = None;
     for (group_index, group) in groups.iter().enumerate() {
@@ -187,33 +183,33 @@ fn operation_menu(
     chosen
 }
 
-fn add_operation_matches(filter: &str) -> usize {
+fn add_edit_matches(filter: &str) -> usize {
     let needle = filter.trim().to_lowercase();
-    operations::TRANSFORM_GROUPS
+    edits::TRANSFORM_GROUPS
         .iter()
-        .chain(operations::OPERATION_GROUPS.iter())
+        .chain(edits::IMAGE_GROUPS.iter())
         .flat_map(|g| g.kinds.iter())
         .filter(|k| needle.is_empty() || k.menu_label.to_lowercase().contains(&needle))
         .count()
 }
 
-fn add_operation_list(
+fn add_edit_list(
     ui: &mut egui::Ui,
     loaded: bool,
     filter: &str,
     selected: usize,
     activate: bool,
     scroll_to_selected: bool,
-) -> Option<Box<dyn Operation>> {
+) -> Option<Box<dyn Edit>> {
     ui.style_mut().wrap = Some(false);
     let needle = filter.trim().to_lowercase();
     let mut chosen = None;
     let mut first = true;
     let mut flat = 0usize;
     let highlight = ui.visuals().widgets.hovered.weak_bg_fill;
-    let groups = operations::TRANSFORM_GROUPS
+    let groups = edits::TRANSFORM_GROUPS
         .iter()
-        .chain(operations::OPERATION_GROUPS.iter());
+        .chain(edits::IMAGE_GROUPS.iter());
     for group in groups {
         let matches: Vec<_> = group
             .kinds
@@ -275,8 +271,8 @@ const SHORTCUT_ADD: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Ke
 const SHORTCUT_ABOUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F1);
 const SHORTCUT_TILE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::T);
 
-/// Bump when an existing operation's parameters change in an incompatible way.
-/// Adding brand-new operations does not require a bump.
+/// Bump when an existing edit's parameters change in an incompatible way.
+/// Adding brand-new edits does not require a bump.
 const STACK_VERSION: u32 = 2;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -297,7 +293,7 @@ const SHORTCUT_COMPARE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE
 
 struct EditEntry {
     id: u64,
-    operation: Box<dyn Operation>,
+    edit: Box<dyn Edit>,
     enabled: bool,
 }
 
@@ -365,11 +361,8 @@ impl KiflaApp {
                     size[0], size[1]
                 )));
                 let color_image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
-                self.original_texture = Some(ctx.load_texture(
-                    "original",
-                    color_image,
-                    egui::TextureOptions::NEAREST,
-                ));
+                self.original_texture =
+                    Some(ctx.load_texture("original", color_image, egui::TextureOptions::NEAREST));
                 self.original = Some(rgba);
                 self.size = size;
                 self.path = Some(path);
@@ -393,7 +386,7 @@ impl KiflaApp {
         let mut result = original.clone();
         for entry in &self.edits {
             if entry.enabled {
-                entry.operation.apply(&mut result);
+                entry.edit.apply(&mut result);
             }
         }
 
@@ -485,9 +478,9 @@ impl KiflaApp {
             .edits
             .iter()
             .map(|e| StackEntry {
-                id: e.operation.id().to_owned(),
+                id: e.edit.id().to_owned(),
                 enabled: e.enabled,
-                params: e.operation.to_json(),
+                params: e.edit.to_json(),
             })
             .collect();
         let file = StackFile {
@@ -539,13 +532,13 @@ impl KiflaApp {
         }
         let mut edits = Vec::with_capacity(file.edits.len());
         for entry in file.edits {
-            let Some(operation) = operations::op_from_json(&entry.id, &entry.params) else {
-                self.error = Some(format!("Unknown operation \"{}\" in stack.", entry.id));
+            let Some(edit) = edits::edit_from_json(&entry.id, &entry.params) else {
+                self.error = Some(format!("Unknown edit \"{}\" in stack.", entry.id));
                 return;
             };
             edits.push(EditEntry {
                 id: self.next_id,
-                operation,
+                edit,
                 enabled: entry.enabled,
             });
             self.next_id += 1;
@@ -573,7 +566,7 @@ impl KiflaApp {
         ui: &mut egui::Ui,
         loaded: bool,
         add_requested: bool,
-    ) -> Option<Box<dyn Operation>> {
+    ) -> Option<Box<dyn Edit>> {
         let mut result = None;
         ui.add_space(2.0);
         ui.vertical_centered(|ui| {
@@ -615,7 +608,7 @@ impl KiflaApp {
                     activate = i.consume_key(Modifiers::NONE, Key::Enter);
                 });
             }
-            let count = add_operation_matches(&self.add_filter);
+            let count = add_edit_matches(&self.add_filter);
             if count > 0 {
                 if nav_down {
                     self.add_selected = (self.add_selected + 1) % count;
@@ -657,7 +650,7 @@ impl KiflaApp {
                 egui::ScrollArea::vertical()
                     .max_height(360.0)
                     .show(ui, |ui| {
-                        add_operation_list(ui, loaded, filter, selected, activate, scroll_to_sel)
+                        add_edit_list(ui, loaded, filter, selected, activate, scroll_to_sel)
                     })
                     .inner
             });
@@ -680,7 +673,7 @@ impl eframe::App for KiflaApp {
         let mut quit_requested = false;
         let mut import_requested = false;
         let mut export_requested = false;
-        let mut add_operation: Option<Box<dyn Operation>> = None;
+        let mut add_edit: Option<Box<dyn Edit>> = None;
         let mut edits_dirty = false;
 
         let mut fit_requested = false;
@@ -877,13 +870,13 @@ impl eframe::App for KiflaApp {
                     }
                 });
                 ui.menu_button("Transform", |ui| {
-                    if let Some(op) = operation_menu(ui, operations::TRANSFORM_GROUPS, loaded) {
-                        add_operation = Some(op);
+                    if let Some(op) = edit_menu(ui, edits::TRANSFORM_GROUPS, loaded) {
+                        add_edit = Some(op);
                     }
                 });
                 ui.menu_button("Image", |ui| {
-                    if let Some(op) = operation_menu(ui, operations::OPERATION_GROUPS, loaded) {
-                        add_operation = Some(op);
+                    if let Some(op) = edit_menu(ui, edits::IMAGE_GROUPS, loaded) {
+                        add_edit = Some(op);
                     }
                 });
                 ui.menu_button("Help", |ui| {
@@ -914,14 +907,11 @@ impl eframe::App for KiflaApp {
                     ui.set_min_width(340.0);
                     ui.horizontal(|ui| {
                         ui.label("About");
-                        ui.with_layout(
-                            egui::Layout::right_to_left(egui::Align::Center),
-                            |ui| {
-                                if ui.small_button("✖").clicked() {
-                                    close = true;
-                                }
-                            },
-                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("✖").clicked() {
+                                close = true;
+                            }
+                        });
                     });
                     ui.separator();
                     ui.add_space(2.0);
@@ -995,7 +985,7 @@ impl eframe::App for KiflaApp {
                             .show_inside(ui, |ui| self.add_button(ui, loaded, add_requested))
                             .inner;
                         if op.is_some() {
-                            add_operation = op;
+                            add_edit = op;
                         }
                     }
 
@@ -1036,7 +1026,7 @@ impl eframe::App for KiflaApp {
                                 ui.painter().text(
                                     resp.rect.left_center() + egui::vec2(1.0, 0.0),
                                     egui::Align2::LEFT_CENTER,
-                                    entry.operation.name(),
+                                    entry.edit.name(),
                                     egui::FontId::proportional(14.0),
                                     color,
                                 );
@@ -1074,7 +1064,7 @@ impl eframe::App for KiflaApp {
                                 let dim = !entry.enabled;
 
                                 let inner = ui.allocate_ui_at_rect(row_rect, |ui| {
-                                    if entry.operation.has_settings() {
+                                    if entry.edit.has_settings() {
                                         let cid = egui::Id::new(("edit_body", entry.id));
                                         egui::collapsing_header::CollapsingState::load_with_default_open(
                                             ui.ctx(),
@@ -1102,7 +1092,7 @@ impl eframe::App for KiflaApp {
                                         .body(|ui| {
                                             let enabled = entry.enabled;
                                             ui.add_enabled_ui(enabled, |ui| {
-                                                if entry.operation.settings_ui(ui) {
+                                                if entry.edit.settings_ui(ui) {
                                                     edits_dirty = true;
                                                 }
                                             });
@@ -1150,6 +1140,7 @@ impl eframe::App for KiflaApp {
                                 new_grab = Some((p.y - origin.y) - slots[i]);
                             }
                             if let (Some(d), Some(p)) = (dragging, pointer) {
+                                // Drop index = how many other rows sit above the dragged row's center.
                                 let center = (p.y - origin.y) - drag_grab;
                                 let mut new_index = 0;
                                 for (j, sy) in slots.iter().enumerate() {
@@ -1173,7 +1164,7 @@ impl eframe::App for KiflaApp {
                                     })
                                     .inner;
                                 if let Some(op) = op {
-                                    add_operation = Some(op);
+                                    add_edit = Some(op);
                                 }
                             }
                         });
@@ -1222,7 +1213,11 @@ impl eframe::App for KiflaApp {
                 ui.visuals_mut().override_text_color = Some(egui::Color32::from_gray(140));
                 ui.horizontal(|ui| {
                     let mut coords = String::new();
-                    let sample = if comparing { &self.original } else { &self.result };
+                    let sample = if comparing {
+                        &self.original
+                    } else {
+                        &self.result
+                    };
                     if let (Some((view, origin)), Some(image)) = (self.view, sample) {
                         if let Some(p) = ctx.input(|i| i.pointer.hover_pos()) {
                             if view.contains(p) {
@@ -1387,7 +1382,8 @@ impl eframe::App for KiflaApp {
                         let mut tx = start_x;
                         let mut cols = 0;
                         while tx < rect.right() && cols < 256 {
-                            let r = egui::Rect::from_min_size(egui::pos2(tx, ty), image_rect.size());
+                            let r =
+                                egui::Rect::from_min_size(egui::pos2(tx, ty), image_rect.size());
                             painter.image(draw_id, r, uv, egui::Color32::WHITE);
                             tx += tw;
                             cols += 1;
@@ -1401,8 +1397,10 @@ impl eframe::App for KiflaApp {
 
                 if let Some(cursor) = response.hover_pos() {
                     let painter = ui.painter_at(rect);
-                    let guide =
-                        egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(255, 255, 255, 128));
+                    let guide = egui::Stroke::new(
+                        1.0,
+                        egui::Color32::from_rgba_unmultiplied(255, 255, 255, 128),
+                    );
                     painter.line_segment(
                         [
                             egui::pos2(cursor.x, rect.top()),
@@ -1443,16 +1441,16 @@ impl eframe::App for KiflaApp {
         if quit_requested {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
-        if let Some(mut operation) = add_operation {
+        if let Some(mut edit) = add_edit {
             if let Some(result) = &self.result {
-                operation.on_added(result.width(), result.height());
+                edit.on_added(result.width(), result.height());
             }
-            let has_settings = operation.has_settings();
+            let has_settings = edit.has_settings();
             self.next_id += 1;
             let entry_id = self.next_id;
             self.edits.push(EditEntry {
                 id: entry_id,
-                operation,
+                edit,
                 enabled: true,
             });
             if has_settings {
@@ -1466,6 +1464,7 @@ impl eframe::App for KiflaApp {
         }
         self.dirty |= edits_dirty;
         if self.dirty {
+            // Throttle stack re-application to ~30fps while settings are dragged.
             const INTERVAL: f64 = 1.0 / 30.0;
             let now = ctx.input(|i| i.time);
             let elapsed = now - self.last_apply;

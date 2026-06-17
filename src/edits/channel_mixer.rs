@@ -1,6 +1,7 @@
 use eframe::egui;
 
-use crate::operation::{par_pixels, Operation};
+use crate::edit::Edit;
+use crate::pixel::{par_pixels, to_u8};
 use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -29,8 +30,8 @@ fn output_ui(ui: &mut egui::Ui, title: &str, weights: &mut [f32; 3]) -> bool {
     changed
 }
 
-impl Operation for ChannelMixer {
-    crate::op_serde!("channel_mixer");
+impl Edit for ChannelMixer {
+    crate::edit_serde!("channel_mixer");
 
     fn name(&self) -> &'static str {
         "Channel Mixer"
@@ -60,9 +61,9 @@ impl Operation for ChannelMixer {
             let ng = self.green[0] * r + self.green[1] * g + self.green[2] * b;
             let nb = self.blue[0] * r + self.blue[1] * g + self.blue[2] * b;
 
-            px[0] = (nr.clamp(0.0, 1.0) * 255.0).round() as u8;
-            px[1] = (ng.clamp(0.0, 1.0) * 255.0).round() as u8;
-            px[2] = (nb.clamp(0.0, 1.0) * 255.0).round() as u8;
+            px[0] = to_u8(nr);
+            px[1] = to_u8(ng);
+            px[2] = to_u8(nb);
         });
     }
 }

@@ -44,14 +44,14 @@ pub use splat::Splat;
 pub use threshold::Threshold;
 pub use vibrance::Vibrance;
 
-use crate::operation::{Operation, OperationGroup, OperationKind};
+use crate::edit::{Edit, EditGroup, EditKind};
 
-pub fn op_from_json(id: &str, params: &serde_json::Value) -> Option<Box<dyn Operation>> {
+pub fn edit_from_json(id: &str, params: &serde_json::Value) -> Option<Box<dyn Edit>> {
     macro_rules! de {
         ($t:ty) => {
             serde_json::from_value::<$t>(params.clone())
                 .ok()
-                .map(|o| Box::new(o) as Box<dyn Operation>)
+                .map(|o| Box::new(o) as Box<dyn Edit>)
         };
     }
     match id {
@@ -83,138 +83,140 @@ pub fn op_from_json(id: &str, params: &serde_json::Value) -> Option<Box<dyn Oper
     }
 }
 
-pub static OPERATION_GROUPS: &[OperationGroup] = &[
-    OperationGroup {
+// Edits offered in the "Image" menu (color and tone adjustments).
+pub static IMAGE_GROUPS: &[EditGroup] = &[
+    EditGroup {
         label: "Tone",
         kinds: &[
-            OperationKind {
+            EditKind {
                 menu_label: "☀ Brightness / Contrast…",
                 make: || Box::new(BrightnessContrast::default()),
             },
-            OperationKind {
+            EditKind {
                 menu_label: "📊 Levels…",
                 make: || Box::new(Levels::default()),
             },
-            OperationKind {
+            EditKind {
                 menu_label: "📈 Curves…",
                 make: || Box::new(Curves::default()),
             },
-            OperationKind {
+            EditKind {
                 menu_label: "🔆 Exposure…",
                 make: || Box::new(Exposure::default()),
             },
         ],
     },
-    OperationGroup {
+    EditGroup {
         label: "Color",
         kinds: &[
-            OperationKind {
+            EditKind {
                 menu_label: "🎨 Hue / Saturation…",
                 make: || Box::new(HueSaturation::default()),
             },
-            OperationKind {
+            EditKind {
                 menu_label: "🌈 Vibrance…",
                 make: || Box::new(Vibrance::default()),
             },
-            OperationKind {
+            EditKind {
                 menu_label: "⚖ Color Balance…",
                 make: || Box::new(ColorBalance::default()),
             },
-            OperationKind {
+            EditKind {
                 menu_label: "🌓 Black & White…",
                 make: || Box::new(BlackWhite::default()),
             },
-            OperationKind {
+            EditKind {
                 menu_label: "🎛 Channel Mixer…",
                 make: || Box::new(ChannelMixer::default()),
             },
         ],
     },
-    OperationGroup {
+    EditGroup {
         label: "Stylize",
         kinds: &[
-            OperationKind {
+            EditKind {
                 menu_label: "🎚 Posterize…",
                 make: || Box::new(Posterize::default()),
             },
-            OperationKind {
+            EditKind {
                 menu_label: "🔲 Threshold…",
                 make: || Box::new(Threshold::default()),
             },
-            OperationKind {
+            EditKind {
                 menu_label: "🎯 Selective Color…",
                 make: || Box::new(SelectiveColor::default()),
             },
-            OperationKind {
+            EditKind {
                 menu_label: "🗂 Indexed Color…",
                 make: || Box::new(IndexedColor::default()),
             },
-            OperationKind {
+            EditKind {
                 menu_label: "🔄 Invert",
                 make: || Box::new(Invert),
             },
         ],
     },
-    OperationGroup {
+    EditGroup {
         label: "Light",
-        kinds: &[OperationKind {
+        kinds: &[EditKind {
             menu_label: "🌗 Shadows / Highlights…",
             make: || Box::new(ShadowsHighlights::default()),
         }],
     },
 ];
 
-pub static TRANSFORM_GROUPS: &[OperationGroup] = &[
-    OperationGroup {
+// Edits offered in the "Transform" menu (geometry and tiling).
+pub static TRANSFORM_GROUPS: &[EditGroup] = &[
+    EditGroup {
         label: "Flip",
         kinds: &[
-            OperationKind {
+            EditKind {
                 menu_label: "🔁 Flip Horizontal",
                 make: || Box::new(FlipHorizontal),
             },
-            OperationKind {
+            EditKind {
                 menu_label: "🔃 Flip Vertical",
                 make: || Box::new(FlipVertical),
             },
         ],
     },
-    OperationGroup {
+    EditGroup {
         label: "Rotate",
         kinds: &[
-            OperationKind {
+            EditKind {
                 menu_label: "🔄 Rotate 90° CW",
                 make: || Box::new(Rotate90Cw),
             },
-            OperationKind {
+            EditKind {
                 menu_label: "🔄 Rotate 90° CCW",
                 make: || Box::new(Rotate90Ccw),
             },
         ],
     },
-    OperationGroup {
+    EditGroup {
         label: "Tiling",
         kinds: &[
-            OperationKind {
+            EditKind {
                 menu_label: "🔀 Offset…",
                 make: || Box::new(Offset::default()),
             },
-            OperationKind {
+            EditKind {
                 menu_label: "🧱 Repeat…",
                 make: || Box::new(Repeat::default()),
             },
-            OperationKind {
+            EditKind {
                 menu_label: "🧩 Make Seamless…",
                 make: || Box::new(MakeSeamless::default()),
             },
-            OperationKind {
+            EditKind {
                 menu_label: "🎲 Splat…",
                 make: || Box::new(Splat::default()),
             },
         ],
     },
-    OperationGroup {
+    EditGroup {
         label: "Size",
-        kinds: &[OperationKind {
+        kinds: &[EditKind {
             menu_label: "📐 Resize…",
             make: || Box::new(Resize::default()),
         }],

@@ -1,11 +1,13 @@
 use eframe::egui;
 
 use crate::color;
-use crate::operation::{par_pixels, Operation};
+use crate::edit::Edit;
+use crate::pixel::{par_pixels, to_u8};
 use crate::widgets;
 
-#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 enum Family {
+    #[default]
     Reds,
     Yellows,
     Greens,
@@ -15,12 +17,6 @@ enum Family {
     Whites,
     Neutrals,
     Blacks,
-}
-
-impl Default for Family {
-    fn default() -> Self {
-        Family::Reds
-    }
 }
 
 impl Family {
@@ -70,8 +66,7 @@ impl Family {
     }
 }
 
-#[derive(Default)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct SelectiveColor {
     family: Family,
     cyan: f32,
@@ -80,8 +75,8 @@ pub struct SelectiveColor {
     black: f32,
 }
 
-impl Operation for SelectiveColor {
-    crate::op_serde!("selective_color");
+impl Edit for SelectiveColor {
+    crate::edit_serde!("selective_color");
 
     fn name(&self) -> &'static str {
         "Selective Color"
@@ -122,13 +117,9 @@ impl Operation for SelectiveColor {
             let (h, s, l) = color::rgb_to_hsl(r, g, b);
             let w = self.family.weight(h, s, l);
 
-            let nr = (r - w * (self.cyan + self.black)).clamp(0.0, 1.0);
-            let ng = (g - w * (self.magenta + self.black)).clamp(0.0, 1.0);
-            let nb = (b - w * (self.yellow + self.black)).clamp(0.0, 1.0);
-
-            px[0] = (nr * 255.0).round() as u8;
-            px[1] = (ng * 255.0).round() as u8;
-            px[2] = (nb * 255.0).round() as u8;
+            px[0] = to_u8(r - w * (self.cyan + self.black));
+            px[1] = to_u8(g - w * (self.magenta + self.black));
+            px[2] = to_u8(b - w * (self.yellow + self.black));
         });
     }
 }

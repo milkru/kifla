@@ -148,6 +148,7 @@ pub fn curve_value(points: &[egui::Pos2], x: f32) -> f32 {
         return points[n - 1].y;
     }
 
+    // Monotone cubic Hermite: tangents flatten at local extrema to avoid overshoot.
     let secant =
         |i: usize| (points[i + 1].y - points[i].y) / (points[i + 1].x - points[i].x).max(1e-6);
     let tangent = |i: usize| {

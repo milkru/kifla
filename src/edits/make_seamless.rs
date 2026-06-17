@@ -2,7 +2,7 @@ use eframe::egui;
 use image::RgbaImage;
 use rayon::prelude::*;
 
-use crate::operation::Operation;
+use crate::edit::Edit;
 use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -22,8 +22,8 @@ impl Default for MakeSeamless {
     }
 }
 
-impl Operation for MakeSeamless {
-    crate::op_serde!("make_seamless");
+impl Edit for MakeSeamless {
+    crate::edit_serde!("make_seamless");
 
     fn name(&self) -> &'static str {
         "Make Seamless"

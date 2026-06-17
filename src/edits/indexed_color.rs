@@ -2,7 +2,8 @@ use color_quant::NeuQuant;
 use eframe::egui;
 use image::{Rgba, RgbaImage};
 
-use crate::operation::{par_pixels, Operation};
+use crate::edit::Edit;
+use crate::pixel::par_pixels;
 use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -22,8 +23,8 @@ impl Default for IndexedColor {
     }
 }
 
-impl Operation for IndexedColor {
-    crate::op_serde!("indexed_color");
+impl Edit for IndexedColor {
+    crate::edit_serde!("indexed_color");
 
     fn name(&self) -> &'static str {
         "Indexed Color"
@@ -36,7 +37,10 @@ impl Operation for IndexedColor {
     fn settings_ui(&mut self, ui: &mut egui::Ui) -> bool {
         if !ui.is_enabled() {
             ui.label(format!("Colors: {}", self.colors));
-            ui.label(format!("Dither: {}", if self.dither { "on" } else { "off" }));
+            ui.label(format!(
+                "Dither: {}",
+                if self.dither { "on" } else { "off" }
+            ));
             if self.dither {
                 ui.label(format!("Amount: {:.2}", self.amount));
             }
@@ -94,8 +98,16 @@ fn dither_floyd_steinberg(image: &mut RgbaImage, nq: &NeuQuant, palette: &[u8], 
             let alpha = image.get_pixel(x as u32, y as u32)[3];
             let probe = [clamp(old[0]), clamp(old[1]), clamp(old[2]), alpha];
             let p = nq.index_of(&probe) * 4;
-            let new = [palette[p] as f32, palette[p + 1] as f32, palette[p + 2] as f32];
-            image.put_pixel(x as u32, y as u32, Rgba([palette[p], palette[p + 1], palette[p + 2], alpha]));
+            let new = [
+                palette[p] as f32,
+                palette[p + 1] as f32,
+                palette[p + 2] as f32,
+            ];
+            image.put_pixel(
+                x as u32,
+                y as u32,
+                Rgba([palette[p], palette[p + 1], palette[p + 2], alpha]),
+            );
 
             let err = [
                 (old[0] - new[0]) * amount,

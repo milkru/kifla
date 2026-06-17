@@ -1,6 +1,7 @@
 use eframe::egui;
 
-use crate::operation::{par_pixels, Operation};
+use crate::edit::Edit;
+use crate::pixel::map_rgb;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Posterize {
@@ -13,8 +14,8 @@ impl Default for Posterize {
     }
 }
 
-impl Operation for Posterize {
-    crate::op_serde!("posterize");
+impl Edit for Posterize {
+    crate::edit_serde!("posterize");
 
     fn name(&self) -> &'static str {
         "Posterize"
@@ -45,12 +46,6 @@ impl Operation for Posterize {
 
     fn apply(&self, image: &mut image::RgbaImage) {
         let steps = (self.levels.round() - 1.0).max(1.0);
-        par_pixels(image, |px| {
-            for channel in &mut px[..3] {
-                let value = *channel as f32 / 255.0;
-                let quantized = (value * steps).round() / steps;
-                *channel = (quantized.clamp(0.0, 1.0) * 255.0).round() as u8;
-            }
-        });
+        map_rgb(image, |value| (value * steps).round() / steps);
     }
 }

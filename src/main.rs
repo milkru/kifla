@@ -2,8 +2,9 @@
 
 mod app;
 mod color;
-mod operation;
-mod operations;
+mod edit;
+mod edits;
+mod pixel;
 mod widgets;
 
 use eframe::egui;

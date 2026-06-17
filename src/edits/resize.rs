@@ -2,7 +2,8 @@ use eframe::egui;
 use image::{imageops, Rgba, RgbaImage};
 use rayon::prelude::*;
 
-use crate::operation::Operation;
+use crate::color;
+use crate::edit::Edit;
 use crate::widgets;
 
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -58,8 +59,8 @@ impl Default for Resize {
     }
 }
 
-impl Operation for Resize {
-    crate::op_serde!("resize");
+impl Edit for Resize {
+    crate::edit_serde!("resize");
 
     fn name(&self) -> &'static str {
         "Resize"
@@ -146,7 +147,7 @@ impl Operation for Resize {
 }
 
 fn luminance(pixel: &Rgba<u8>) -> f32 {
-    0.299 * pixel[0] as f32 + 0.587 * pixel[1] as f32 + 0.114 * pixel[2] as f32
+    color::luma(pixel[0] as f32, pixel[1] as f32, pixel[2] as f32)
 }
 
 fn resample_extreme(
@@ -162,7 +163,7 @@ fn resample_extreme(
 
     let span = |index: u32, dst: u32, src: u32| {
         let lo = (index as u64 * src as u64 / dst as u64) as u32;
-        let hi = (((index as u64 + 1) * src as u64 + dst as u64 - 1) / dst as u64) as u32;
+        let hi = ((index as u64 + 1) * src as u64).div_ceil(dst as u64) as u32;
         (lo, hi.max(lo + 1).min(src))
     };
 
@@ -172,47 +173,50 @@ fn resample_extreme(
 
     let row_len = dst_w as usize * 4;
     let buffer: &mut [u8] = &mut out;
-    buffer.par_chunks_mut(row_len).enumerate().for_each(|(oy, row)| {
-        let oy = oy as u32;
-        let (y0, y1) = span(oy, dst_h, src_h);
-        let ny = nearest(oy, dst_h, src_h);
-        for ox in 0..dst_w {
-            let (x0, x1) = span(ox, dst_w, src_w);
-            let mut eligible: Option<(Rgba<u8>, f32)> = None;
-            for yy in y0..y1 {
-                for xx in x0..x1 {
-                    let pixel = src.get_pixel(xx, yy);
-                    let lum = luminance(pixel);
-                    let passes = if take_max {
-                        lum >= threshold
-                    } else {
-                        lum <= threshold
-                    };
-                    if !passes {
-                        continue;
-                    }
-                    let better = match eligible {
-                        None => true,
-                        Some((_, best_lum)) => {
-                            if take_max {
-                                lum > best_lum
-                            } else {
-                                lum < best_lum
-                            }
+    buffer
+        .par_chunks_mut(row_len)
+        .enumerate()
+        .for_each(|(oy, row)| {
+            let oy = oy as u32;
+            let (y0, y1) = span(oy, dst_h, src_h);
+            let ny = nearest(oy, dst_h, src_h);
+            for ox in 0..dst_w {
+                let (x0, x1) = span(ox, dst_w, src_w);
+                let mut eligible: Option<(Rgba<u8>, f32)> = None;
+                for yy in y0..y1 {
+                    for xx in x0..x1 {
+                        let pixel = src.get_pixel(xx, yy);
+                        let lum = luminance(pixel);
+                        let passes = if take_max {
+                            lum >= threshold
+                        } else {
+                            lum <= threshold
+                        };
+                        if !passes {
+                            continue;
                         }
-                    };
-                    if better {
-                        eligible = Some((*pixel, lum));
+                        let better = match eligible {
+                            None => true,
+                            Some((_, best_lum)) => {
+                                if take_max {
+                                    lum > best_lum
+                                } else {
+                                    lum < best_lum
+                                }
+                            }
+                        };
+                        if better {
+                            eligible = Some((*pixel, lum));
+                        }
                     }
                 }
+                let pixel = eligible
+                    .map(|(p, _)| p)
+                    .unwrap_or_else(|| *src.get_pixel(nearest(ox, dst_w, src_w), ny));
+                let o = ox as usize * 4;
+                row[o..o + 4].copy_from_slice(&pixel.0);
             }
-            let pixel = eligible
-                .map(|(p, _)| p)
-                .unwrap_or_else(|| *src.get_pixel(nearest(ox, dst_w, src_w), ny));
-            let o = ox as usize * 4;
-            row[o..o + 4].copy_from_slice(&pixel.0);
-        }
-    });
+        });
 
     out
 }

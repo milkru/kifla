@@ -1,6 +1,7 @@
 use eframe::egui;
 
-use crate::operation::{par_pixels, Operation};
+use crate::edit::Edit;
+use crate::pixel::map_rgb;
 use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -20,8 +21,8 @@ impl Default for Exposure {
     }
 }
 
-impl Operation for Exposure {
-    crate::op_serde!("exposure");
+impl Edit for Exposure {
+    crate::edit_serde!("exposure");
 
     fn name(&self) -> &'static str {
         "Exposure"
@@ -42,12 +43,8 @@ impl Operation for Exposure {
     fn apply(&self, image: &mut image::RgbaImage) {
         let mult = 2f32.powf(self.exposure);
         let inv_gamma = 1.0 / self.gamma;
-        par_pixels(image, |px| {
-            for channel in &mut px[..3] {
-                let mut value = *channel as f32 / 255.0 * mult + self.offset;
-                value = value.max(0.0).powf(inv_gamma);
-                *channel = (value.clamp(0.0, 1.0) * 255.0).round() as u8;
-            }
+        map_rgb(image, |value| {
+            (value * mult + self.offset).max(0.0).powf(inv_gamma)
         });
     }
 }

@@ -1,3 +1,8 @@
+/// Rec. 601 luma of normalized RGB.
+pub fn luma(r: f32, g: f32, b: f32) -> f32 {
+    0.299 * r + 0.587 * g + 0.114 * b
+}
+
 pub fn rgb_to_hsl(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     let max = r.max(g).max(b);
     let min = r.min(g).min(b);

@@ -14,7 +14,7 @@ Adding an edit does nothing until you touch its settings - defaults are no-ops, 
 
 ## Under the hood
 
-Processing runs on the CPU, parallelized across all cores. Each operation is a self-contained type implementing a small `Operation` trait, so adding a new one is mostly: write a file, register it in a menu group. The architecture leaves room to move individual operations onto the GPU later without changing the workflow.
+Processing runs on the CPU, parallelized across all cores. Each edit is a self-contained type implementing a small `Edit` trait, so adding a new one is mostly: write a file, register it in a menu group. The architecture leaves room to move individual edits onto the GPU later without changing the workflow.
 
 ## Built with
 

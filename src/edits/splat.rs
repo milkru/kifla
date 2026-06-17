@@ -1,7 +1,7 @@
 use eframe::egui;
 use image::{Rgba, RgbaImage};
 
-use crate::operation::Operation;
+use crate::edit::Edit;
 use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -27,6 +27,7 @@ impl Default for Splat {
     }
 }
 
+// xorshift32, returning a deterministic 0..1 sample so splats are reproducible per seed.
 fn rng(state: &mut u32) -> f32 {
     let mut x = *state;
     x ^= x << 13;
@@ -60,8 +61,8 @@ fn sample(src: &RgbaImage, x: f32, y: f32, w: u32, h: u32) -> [f32; 4] {
     out
 }
 
-impl Operation for Splat {
-    crate::op_serde!("splat");
+impl Edit for Splat {
+    crate::edit_serde!("splat");
 
     fn name(&self) -> &'static str {
         "Splat"
@@ -129,8 +130,7 @@ impl Operation for Splat {
 
                 let px = (gx as f32 + 0.5) * cell_w + self.wobble * (r1 - 0.5) * cell_w;
                 let py = (gy as f32 + 0.5) * cell_h + self.wobble * (r2 - 0.5) * cell_h;
-                let angle =
-                    (self.rotation + self.random_rotation * r3) * std::f32::consts::TAU;
+                let angle = (self.rotation + self.random_rotation * r3) * std::f32::consts::TAU;
                 let (sa, ca) = angle.sin_cos();
 
                 let min_x = (px - radius).floor() as i32;

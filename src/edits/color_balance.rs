@@ -1,6 +1,8 @@
 use eframe::egui;
 
-use crate::operation::{par_pixels, Operation};
+use crate::color;
+use crate::edit::Edit;
+use crate::pixel::{par_pixels, to_u8};
 use crate::widgets;
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
@@ -19,8 +21,8 @@ fn range_ui(ui: &mut egui::Ui, title: &str, amounts: &mut [f32; 3]) -> bool {
     changed
 }
 
-impl Operation for ColorBalance {
-    crate::op_serde!("color_balance");
+impl Edit for ColorBalance {
+    crate::edit_serde!("color_balance");
 
     fn name(&self) -> &'static str {
         "Color Balance"
@@ -48,7 +50,7 @@ impl Operation for ColorBalance {
                 px[1] as f32 / 255.0,
                 px[2] as f32 / 255.0,
             ];
-            let lum = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2];
+            let lum = color::luma(rgb[0], rgb[1], rgb[2]);
             let shadow = (1.0 - 2.0 * lum).max(0.0);
             let highlight = (2.0 * lum - 1.0).max(0.0);
             let midtone = (1.0 - shadow - highlight).max(0.0);
@@ -58,7 +60,7 @@ impl Operation for ColorBalance {
                     * (self.shadows[c] * shadow
                         + self.midtones[c] * midtone
                         + self.highlights[c] * highlight);
-                px[c] = ((rgb[c] + shift).clamp(0.0, 1.0) * 255.0).round() as u8;
+                px[c] = to_u8(rgb[c] + shift);
             }
         });
     }

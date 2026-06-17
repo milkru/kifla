@@ -2,7 +2,7 @@ use eframe::egui;
 use image::RgbaImage;
 use rayon::prelude::*;
 
-use crate::operation::Operation;
+use crate::edit::Edit;
 
 fn offset_wrap(image: &RgbaImage, ox: i64, oy: i64) -> RgbaImage {
     let (w, h) = (image.width(), image.height());
@@ -34,7 +34,7 @@ fn offset_wrap(image: &RgbaImage, ox: i64, oy: i64) -> RgbaImage {
     out
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct Offset {
     x: i32,
     y: i32,
@@ -42,19 +42,8 @@ pub struct Offset {
     height: u32,
 }
 
-impl Default for Offset {
-    fn default() -> Self {
-        Self {
-            x: 0,
-            y: 0,
-            width: 0,
-            height: 0,
-        }
-    }
-}
-
-impl Operation for Offset {
-    crate::op_serde!("offset");
+impl Edit for Offset {
+    crate::edit_serde!("offset");
 
     fn name(&self) -> &'static str {
         "Offset"

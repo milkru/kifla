@@ -1,6 +1,8 @@
 use eframe::egui;
 
-use crate::operation::{par_pixels, Operation};
+use crate::color;
+use crate::edit::Edit;
+use crate::pixel::par_pixels;
 use crate::widgets;
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
@@ -9,8 +11,8 @@ pub struct ShadowsHighlights {
     highlights: f32,
 }
 
-impl Operation for ShadowsHighlights {
-    crate::op_serde!("shadows_highlights");
+impl Edit for ShadowsHighlights {
+    crate::edit_serde!("shadows_highlights");
 
     fn name(&self) -> &'static str {
         "Shadows / Highlights"
@@ -29,7 +31,7 @@ impl Operation for ShadowsHighlights {
 
     fn apply(&self, image: &mut image::RgbaImage) {
         par_pixels(image, |px| {
-            let lum = (0.299 * px[0] as f32 + 0.587 * px[1] as f32 + 0.114 * px[2] as f32) / 255.0;
+            let lum = color::luma(px[0] as f32, px[1] as f32, px[2] as f32) / 255.0;
             let shadow_mask = (1.0 - lum).powi(2);
             let highlight_mask = lum.powi(2);
 

@@ -1,20 +1,14 @@
 use eframe::egui;
-use rayon::prelude::*;
 
-pub fn par_pixels(image: &mut image::RgbaImage, f: impl Fn(&mut [u8]) + Sync + Send) {
-    let buffer: &mut [u8] = image;
-    buffer.par_chunks_mut(4).for_each(f);
-}
-
-pub trait Operation {
+pub trait Edit {
     fn name(&self) -> &'static str;
 
     /// Stable identifier used when saving/loading a stack. Must be unique and
-    /// must never change for an existing operation.
+    /// must never change for an existing edit.
     fn id(&self) -> &'static str;
 
-    /// Serialize this operation's parameters. Parameterless operations keep the
-    /// default (`null`).
+    /// Serialize this edit's parameters. Parameterless edits keep the default
+    /// (`null`).
     fn to_json(&self) -> serde_json::Value {
         serde_json::Value::Null
     }
@@ -32,9 +26,9 @@ pub trait Operation {
     fn on_added(&mut self, _width: u32, _height: u32) {}
 }
 
-/// Implements `id` for a parameterless operation.
+/// Implements `id` for a parameterless edit.
 #[macro_export]
-macro_rules! op_id {
+macro_rules! edit_id {
     ($id:literal) => {
         fn id(&self) -> &'static str {
             $id
@@ -42,9 +36,9 @@ macro_rules! op_id {
     };
 }
 
-/// Implements `id` and `to_json` for an operation whose struct derives `Serialize`.
+/// Implements `id` and `to_json` for an edit whose struct derives `Serialize`.
 #[macro_export]
-macro_rules! op_serde {
+macro_rules! edit_serde {
     ($id:literal) => {
         fn id(&self) -> &'static str {
             $id
@@ -55,12 +49,12 @@ macro_rules! op_serde {
     };
 }
 
-pub struct OperationKind {
+pub struct EditKind {
     pub menu_label: &'static str,
-    pub make: fn() -> Box<dyn Operation>,
+    pub make: fn() -> Box<dyn Edit>,
 }
 
-pub struct OperationGroup {
+pub struct EditGroup {
     pub label: &'static str,
-    pub kinds: &'static [OperationKind],
+    pub kinds: &'static [EditKind],
 }

@@ -1,6 +1,7 @@
 use eframe::egui;
 
-use crate::operation::{par_pixels, Operation};
+use crate::edit::Edit;
+use crate::pixel::par_pixels;
 use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -22,8 +23,8 @@ impl Default for BlackWhite {
     }
 }
 
-impl Operation for BlackWhite {
-    crate::op_serde!("black_white");
+impl Edit for BlackWhite {
+    crate::edit_serde!("black_white");
 
     fn name(&self) -> &'static str {
         "Black & White"

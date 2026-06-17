@@ -1,7 +1,8 @@
 use eframe::egui;
 
 use crate::color;
-use crate::operation::{par_pixels, Operation};
+use crate::edit::Edit;
+use crate::pixel::{par_pixels, to_u8};
 use crate::widgets;
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
@@ -11,8 +12,8 @@ pub struct HueSaturation {
     lightness: f32,
 }
 
-impl Operation for HueSaturation {
-    crate::op_serde!("hue_saturation");
+impl Edit for HueSaturation {
+    crate::edit_serde!("hue_saturation");
 
     fn name(&self) -> &'static str {
         "Hue / Saturation"
@@ -43,9 +44,9 @@ impl Operation for HueSaturation {
             l = (l + self.lightness).clamp(0.0, 1.0);
 
             let (nr, ng, nb) = color::hsl_to_rgb(h, s, l);
-            px[0] = (nr.clamp(0.0, 1.0) * 255.0).round() as u8;
-            px[1] = (ng.clamp(0.0, 1.0) * 255.0).round() as u8;
-            px[2] = (nb.clamp(0.0, 1.0) * 255.0).round() as u8;
+            px[0] = to_u8(nr);
+            px[1] = to_u8(ng);
+            px[2] = to_u8(nb);
         });
     }
 }

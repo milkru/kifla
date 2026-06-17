@@ -1,11 +1,11 @@
 use image::imageops;
 
-use crate::operation::Operation;
+use crate::edit::Edit;
 
 pub struct Rotate90Cw;
 
-impl Operation for Rotate90Cw {
-    crate::op_id!("rotate_90_cw");
+impl Edit for Rotate90Cw {
+    crate::edit_id!("rotate_90_cw");
 
     fn name(&self) -> &'static str {
         "Rotate 90° CW"
@@ -18,8 +18,8 @@ impl Operation for Rotate90Cw {
 
 pub struct Rotate90Ccw;
 
-impl Operation for Rotate90Ccw {
-    crate::op_id!("rotate_90_ccw");
+impl Edit for Rotate90Ccw {
+    crate::edit_id!("rotate_90_ccw");
 
     fn name(&self) -> &'static str {
         "Rotate 90° CCW"

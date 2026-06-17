@@ -1,6 +1,7 @@
 use eframe::egui;
 
-use crate::operation::{par_pixels, Operation};
+use crate::edit::Edit;
+use crate::pixel::map_rgb;
 use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -24,8 +25,8 @@ impl Default for Levels {
     }
 }
 
-impl Operation for Levels {
-    crate::op_serde!("levels");
+impl Edit for Levels {
+    crate::edit_serde!("levels");
 
     fn name(&self) -> &'static str {
         "Levels"
@@ -49,13 +50,11 @@ impl Operation for Levels {
     fn apply(&self, image: &mut image::RgbaImage) {
         let denom = (self.in_white - self.in_black).max(1e-4);
         let inv_gamma = 1.0 / self.gamma;
-        par_pixels(image, |px| {
-            for channel in &mut px[..3] {
-                let mut value = (*channel as f32 / 255.0 - self.in_black) / denom;
-                value = value.clamp(0.0, 1.0).powf(inv_gamma);
-                value = self.out_black + value * (self.out_white - self.out_black);
-                *channel = (value.clamp(0.0, 1.0) * 255.0).round() as u8;
-            }
+        map_rgb(image, |value| {
+            let value = ((value - self.in_black) / denom)
+                .clamp(0.0, 1.0)
+                .powf(inv_gamma);
+            self.out_black + value * (self.out_white - self.out_black)
         });
     }
 }
