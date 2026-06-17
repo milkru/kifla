@@ -577,7 +577,7 @@ impl KiflaApp {
                     ui.label(
                         egui::RichText::new(tip)
                             .size(11.0)
-                            .color(egui::Color32::from_gray(190)),
+                            .color(egui::Color32::from_gray(165)),
                     );
                 });
             let popup_id = ui.make_persistent_id("add_popup");
@@ -918,17 +918,28 @@ impl eframe::App for KiflaApp {
                     ui.label(
                         egui::RichText::new("kifla")
                             .size(22.0)
-                            .color(egui::Color32::from_gray(150)),
+                            .color(egui::Color32::from_gray(125)),
                     );
                     ui.add_space(6.0);
-                    ui.label("A tiny non-destructive texture editor.");
-                    ui.add_space(8.0);
                     ui.label(
-                        "Pile on edits, tweak them live, reorder or hide them whenever. \
-                         Your original never gets touched until you save.",
+                        egui::RichText::new("A tiny non-destructive texture editor.")
+                            .color(egui::Color32::from_gray(165)),
                     );
                     ui.add_space(8.0);
-                    ui.label(egui::RichText::new("Made with Rust.").weak());
+                    ui.label(
+                        egui::RichText::new(
+                            "Pile on edits, tweak them live, reorder or hide them whenever. \
+                             Your original never gets touched until you save.",
+                        )
+                        .color(egui::Color32::from_gray(165)),
+                    );
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Made with Rust…").weak());
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(egui::RichText::new("…by kru.").weak());
+                        });
+                    });
                     ui.add_space(2.0);
                 });
             if close {
@@ -1297,7 +1308,7 @@ impl eframe::App for KiflaApp {
                                 ui.label(
                                     egui::RichText::new(tip)
                                         .size(11.0)
-                                        .color(egui::Color32::from_gray(190)),
+                                        .color(egui::Color32::from_gray(165)),
                                 );
                             });
                             if open.clicked() {
