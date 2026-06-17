@@ -168,7 +168,7 @@ const SHORTCUT_FIT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Ke
 const COMPARE_KEY: Key = Key::C;
 const SHORTCUT_COMPARE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, COMPARE_KEY);
 
-struct HistoryEntry {
+struct EditEntry {
     id: u64,
     operation: Box<dyn Operation>,
     enabled: bool,
@@ -180,7 +180,7 @@ pub struct KiflaApp {
     result: Option<image::RgbaImage>,
     texture: Option<egui::TextureHandle>,
     original_texture: Option<egui::TextureHandle>,
-    history: Vec<HistoryEntry>,
+    edits: Vec<EditEntry>,
     size: [usize; 2],
     path: Option<PathBuf>,
     error: Option<String>,
@@ -194,6 +194,7 @@ pub struct KiflaApp {
     row_heights: std::collections::HashMap<u64, f32>,
     next_id: u64,
     dirty: bool,
+    edits_anim: f32,
     last_apply: f64,
     pending_open: Option<Receiver<Option<PathBuf>>>,
     pending_save: Option<Receiver<Option<PathBuf>>>,
@@ -237,7 +238,7 @@ impl KiflaApp {
                     egui::TextureOptions::NEAREST,
                 ));
                 self.original = Some(rgba);
-                self.history.clear();
+                self.edits.clear();
                 self.size = size;
                 self.path = Some(path);
                 self.error = None;
@@ -258,7 +259,7 @@ impl KiflaApp {
         };
 
         let mut result = original.clone();
-        for entry in &self.history {
+        for entry in &self.edits {
             if entry.enabled {
                 entry.operation.apply(&mut result);
             }
@@ -335,7 +336,7 @@ impl KiflaApp {
         self.result = None;
         self.texture = None;
         self.original_texture = None;
-        self.history.clear();
+        self.edits.clear();
         self.size = [0, 0];
         self.path = None;
         self.error = None;
@@ -353,7 +354,7 @@ impl eframe::App for KiflaApp {
         let mut close_requested = false;
         let mut quit_requested = false;
         let mut add_operation: Option<Box<dyn Operation>> = None;
-        let mut history_dirty = false;
+        let mut edits_dirty = false;
 
         let mut fit_requested = false;
         ctx.input_mut(|i| {
@@ -501,11 +502,33 @@ impl eframe::App for KiflaApp {
         }
         let comparing = compare_held && self.original_texture.is_some();
 
-        if self.original.is_some() && !self.history.is_empty() {
-            egui::SidePanel::left("history_panel")
-                .resizable(true)
-                .default_width(258.0)
-                .show(ctx, |ui| {
+        let edits_target = if loaded { 1.0 } else { 0.0 };
+        if self.edits_anim != edits_target {
+            let dt = ctx.input(|i| i.stable_dt).clamp(0.0, 1.0 / 30.0);
+            let step = dt / 0.18;
+            if self.edits_anim < edits_target {
+                self.edits_anim = (self.edits_anim + step).min(edits_target);
+            } else {
+                self.edits_anim = (self.edits_anim - step).max(edits_target);
+            }
+            ctx.request_repaint();
+        }
+        let edits_t = self.edits_anim;
+        if edits_t > 0.001 {
+            const EDITS_WIDTH: f32 = 258.0;
+            let animating = edits_t < 0.999;
+            let panel_id = if animating {
+                "edits_panel_anim"
+            } else {
+                "edits_panel"
+            };
+            let mut panel = egui::SidePanel::left(panel_id).default_width(EDITS_WIDTH);
+            panel = if animating {
+                panel.resizable(false).exact_width(EDITS_WIDTH * edits_t)
+            } else {
+                panel.resizable(true).width_range(80.0..=EDITS_WIDTH)
+            };
+            panel.show(ctx, |ui| {
                     ui.spacing_mut().slider_width = 150.0;
                     ui.style_mut().spacing.scroll.floating = false;
                     ui.style_mut().spacing.scroll.bar_width = 5.0;
@@ -524,11 +547,11 @@ impl eframe::App for KiflaApp {
                     let spacing = ui.spacing().item_spacing.y;
 
                     let heights: Vec<f32> = self
-                        .history
+                        .edits
                         .iter()
                         .map(|e| self.row_heights.get(&e.id).copied().unwrap_or(24.0))
                         .collect();
-                    let mut slots = Vec::with_capacity(self.history.len());
+                    let mut slots = Vec::with_capacity(self.edits.len());
                     let mut total = 0.0;
                     for h in &heights {
                         slots.push(total);
@@ -546,7 +569,7 @@ impl eframe::App for KiflaApp {
                             let origin = area.min;
                             let pointer = ui.input(|i| i.pointer.hover_pos());
 
-                            let eye_toggle = |ui: &mut egui::Ui, entry: &mut HistoryEntry| {
+                            let eye_toggle = |ui: &mut egui::Ui, entry: &mut EditEntry| {
                                 let text = if entry.enabled {
                                     egui::RichText::new("👁")
                                 } else {
@@ -560,7 +583,7 @@ impl eframe::App for KiflaApp {
                                 }
                             };
 
-                            let name_handle = |ui: &mut egui::Ui, entry: &HistoryEntry, dim: bool| {
+                            let name_handle = |ui: &mut egui::Ui, entry: &EditEntry, dim: bool| {
                                 let size =
                                     egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
                                 let resp = ui.allocate_response(size, egui::Sense::drag());
@@ -582,12 +605,12 @@ impl eframe::App for KiflaApp {
                                 resp.drag_started()
                             };
 
-                            let order: Vec<usize> = (0..self.history.len())
+                            let order: Vec<usize> = (0..self.edits.len())
                                 .filter(|i| Some(*i) != dragging)
                                 .chain(dragging)
                                 .collect();
                             for i in order {
-                                let entry = &mut self.history[i];
+                                let entry = &mut self.edits[i];
                                 let is_dragged = dragging == Some(i);
                                 let target = if is_dragged {
                                     match pointer {
@@ -619,7 +642,7 @@ impl eframe::App for KiflaApp {
                                         )
                                         .show_header(ui, |ui| {
                                             if eye_toggle(ui, entry) {
-                                                history_dirty = true;
+                                                edits_dirty = true;
                                                 set_collapse = Some((entry.id, entry.enabled));
                                             }
                                             ui.with_layout(
@@ -638,7 +661,7 @@ impl eframe::App for KiflaApp {
                                             let enabled = entry.enabled;
                                             ui.add_enabled_ui(enabled, |ui| {
                                                 if entry.operation.settings_ui(ui) {
-                                                    history_dirty = true;
+                                                    edits_dirty = true;
                                                 }
                                             });
                                         });
@@ -646,7 +669,7 @@ impl eframe::App for KiflaApp {
                                         ui.horizontal(|ui| {
                                             ui.add_space(ui.spacing().indent);
                                             if eye_toggle(ui, entry) {
-                                                history_dirty = true;
+                                                edits_dirty = true;
                                                 set_collapse = Some((entry.id, entry.enabled));
                                             }
                                             ui.with_layout(
@@ -715,8 +738,8 @@ impl eframe::App for KiflaApp {
                         }
                     }
                     if let Some((from, to)) = reorder {
-                        let entry = self.history.remove(from);
-                        self.history.insert(to, entry);
+                        let entry = self.edits.remove(from);
+                        self.edits.insert(to, entry);
                         self.dragging = Some(to);
                         self.reordered = true;
                     }
@@ -724,13 +747,13 @@ impl eframe::App for KiflaApp {
                         self.dragging = None;
                         if self.reordered {
                             self.reordered = false;
-                            history_dirty = true;
+                            edits_dirty = true;
                         }
                     }
                     if let Some(i) = remove_index {
-                        self.history.remove(i);
+                        self.edits.remove(i);
                         self.dragging = None;
-                        history_dirty = true;
+                        edits_dirty = true;
                     }
                 });
         }
@@ -793,11 +816,20 @@ impl eframe::App for KiflaApp {
                 }
 
                 let Some(texture) = self.texture.clone() else {
+                    let area = ui.max_rect();
+                    ui.painter().text(
+                        egui::pos2(area.center().x, area.top() + 40.0),
+                        egui::Align2::CENTER_TOP,
+                        "Kifla",
+                        egui::FontId::proportional(112.0),
+                        egui::Color32::from_gray(60),
+                    );
                     ui.vertical_centered(|ui| {
-                        ui.add_space(ui.available_height() / 2.0 - 30.0);
+                        ui.add_space(ui.available_height() / 2.0 - 60.0);
                         ui.label(
-                            egui::RichText::new("Open a texture to get started, or drop one here…")
-                                .weak(),
+                            egui::RichText::new("Open a texture to get started…")
+                                .weak()
+                                .size(14.0),
                         );
                         ui.add_space(8.0);
                         ui.scope(|ui| {
@@ -806,6 +838,22 @@ impl eframe::App for KiflaApp {
                                 open_requested = true;
                             }
                         });
+                        ui.add_space(14.0);
+                        egui::Frame::none()
+                            .stroke(egui::Stroke::new(1.0, ui.visuals().weak_text_color()))
+                            .rounding(6.0)
+                            .inner_margin(egui::Margin::same(10.0))
+                            .show(ui, |ui| {
+                                ui.set_width(250.0);
+                                ui.set_height(50.0);
+                                ui.centered_and_justified(|ui| {
+                                    ui.label(
+                                        egui::RichText::new("…or drop a texture here…")
+                                            .weak()
+                                            .size(14.0),
+                                    );
+                                });
+                            });
                     });
                     return;
                 };
@@ -904,7 +952,7 @@ impl eframe::App for KiflaApp {
             let has_settings = operation.has_settings();
             self.next_id += 1;
             let entry_id = self.next_id;
-            self.history.push(HistoryEntry {
+            self.edits.push(EditEntry {
                 id: entry_id,
                 operation,
                 enabled: true,
@@ -916,9 +964,9 @@ impl eframe::App for KiflaApp {
                 state.set_open(true);
                 state.store(ctx);
             }
-            history_dirty = true;
+            edits_dirty = true;
         }
-        self.dirty |= history_dirty;
+        self.dirty |= edits_dirty;
         if self.dirty {
             const INTERVAL: f64 = 1.0 / 30.0;
             let now = ctx.input(|i| i.time);
