@@ -150,6 +150,75 @@ fn operation_menu(
     chosen
 }
 
+fn add_operation_matches(filter: &str) -> usize {
+    let needle = filter.trim().to_lowercase();
+    operations::TRANSFORM_GROUPS
+        .iter()
+        .chain(operations::OPERATION_GROUPS.iter())
+        .flat_map(|g| g.kinds.iter())
+        .filter(|k| needle.is_empty() || k.menu_label.to_lowercase().contains(&needle))
+        .count()
+}
+
+fn add_operation_list(
+    ui: &mut egui::Ui,
+    loaded: bool,
+    filter: &str,
+    selected: usize,
+    activate: bool,
+    scroll_to_selected: bool,
+) -> Option<Box<dyn Operation>> {
+    ui.style_mut().wrap = Some(false);
+    let needle = filter.trim().to_lowercase();
+    let mut chosen = None;
+    let mut first = true;
+    let mut flat = 0usize;
+    let highlight = ui.visuals().widgets.hovered.weak_bg_fill;
+    let groups = operations::TRANSFORM_GROUPS
+        .iter()
+        .chain(operations::OPERATION_GROUPS.iter());
+    for group in groups {
+        let matches: Vec<_> = group
+            .kinds
+            .iter()
+            .filter(|k| needle.is_empty() || k.menu_label.to_lowercase().contains(&needle))
+            .collect();
+        if matches.is_empty() {
+            continue;
+        }
+        if !first {
+            ui.separator();
+        }
+        first = false;
+        ui.label(egui::RichText::new(group.label).weak().small());
+        for kind in matches {
+            let is_sel = flat == selected;
+            let fill = if is_sel {
+                highlight
+            } else {
+                egui::Color32::TRANSPARENT
+            };
+            let resp = ui.add_enabled(
+                loaded,
+                egui::Button::new(kind.menu_label)
+                    .fill(fill)
+                    .min_size(egui::vec2(ui.available_width(), 0.0)),
+            );
+            if resp.clicked() || (is_sel && activate) {
+                chosen = Some((kind.make)());
+            }
+            if is_sel && scroll_to_selected {
+                resp.scroll_to_me(Some(egui::Align::Center));
+            }
+            flat += 1;
+        }
+    }
+    if flat == 0 {
+        ui.label(egui::RichText::new("No matches").weak());
+    }
+    chosen
+}
+
 const SHORTCUT_OPEN: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::O);
 const SHORTCUT_SAVE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::S);
 const SHORTCUT_SAVE_AS: KeyboardShortcut = KeyboardShortcut::new(
@@ -165,6 +234,7 @@ const SHORTCUT_SAVE_AS: KeyboardShortcut = KeyboardShortcut::new(
 const SHORTCUT_CLOSE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::W);
 const SHORTCUT_QUIT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Q);
 const SHORTCUT_FIT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Num0);
+const SHORTCUT_ADD: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::A);
 const COMPARE_KEY: Key = Key::C;
 const SHORTCUT_COMPARE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, COMPARE_KEY);
 
@@ -194,7 +264,9 @@ pub struct KiflaApp {
     row_heights: std::collections::HashMap<u64, f32>,
     next_id: u64,
     dirty: bool,
-    edits_anim: f32,
+    add_filter: String,
+    add_selected: usize,
+    add_was_open: bool,
     last_apply: f64,
     pending_open: Option<Receiver<Option<PathBuf>>>,
     pending_save: Option<Receiver<Option<PathBuf>>>,
@@ -343,6 +415,107 @@ impl KiflaApp {
         self.view = None;
         ctx.send_viewport_cmd(egui::ViewportCommand::Title("Kifla".to_owned()));
     }
+
+    fn add_button(
+        &mut self,
+        ui: &mut egui::Ui,
+        loaded: bool,
+        add_requested: bool,
+    ) -> Option<Box<dyn Operation>> {
+        let mut result = None;
+        ui.add_space(2.0);
+        ui.vertical_centered(|ui| {
+            let tip = format!("New edit  ({})", ui.ctx().format_shortcut(&SHORTCUT_ADD));
+            let add = ui
+                .add(egui::Button::new("➕ Add…").min_size(egui::vec2(132.0, 0.0)))
+                .on_hover_ui_at_pointer(|ui| {
+                    ui.label(
+                        egui::RichText::new(tip)
+                            .size(11.0)
+                            .color(egui::Color32::from_gray(190)),
+                    );
+                });
+            let popup_id = ui.make_persistent_id("add_popup");
+            if add.clicked() {
+                ui.memory_mut(|m| m.toggle_popup(popup_id));
+            }
+            if add_requested {
+                ui.memory_mut(|m| m.open_popup(popup_id));
+            }
+            let open = ui.memory(|m| m.is_popup_open(popup_id));
+            let just_opened = open && !self.add_was_open;
+            self.add_was_open = open;
+            if just_opened {
+                self.add_filter.clear();
+                self.add_selected = 0;
+            }
+            let dir = if add.rect.center().y > ui.ctx().screen_rect().center().y {
+                egui::AboveOrBelow::Above
+            } else {
+                egui::AboveOrBelow::Below
+            };
+
+            let (mut nav_up, mut nav_down, mut activate) = (false, false, false);
+            if open {
+                ui.input_mut(|i| {
+                    nav_up = i.consume_key(Modifiers::NONE, Key::ArrowUp);
+                    nav_down = i.consume_key(Modifiers::NONE, Key::ArrowDown);
+                    activate = i.consume_key(Modifiers::NONE, Key::Enter);
+                });
+            }
+            let count = add_operation_matches(&self.add_filter);
+            if count > 0 {
+                if nav_down {
+                    self.add_selected = (self.add_selected + 1) % count;
+                }
+                if nav_up {
+                    self.add_selected = (self.add_selected + count - 1) % count;
+                }
+                self.add_selected = self.add_selected.min(count - 1);
+            } else {
+                self.add_selected = 0;
+            }
+            let scroll_to_sel = nav_up || nav_down;
+            let selected = self.add_selected;
+
+            let filter = &mut self.add_filter;
+            let chosen = egui::popup_above_or_below_widget(ui, popup_id, &add, dir, |ui| {
+                ui.set_min_width(190.0);
+                let search = ui
+                    .scope(|ui| {
+                        let edge = egui::Color32::from_gray(105);
+                        let v = ui.visuals_mut();
+                        v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, edge);
+                        v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, edge);
+                        v.widgets.active.bg_stroke = egui::Stroke::new(1.0, edge);
+                        ui.add(
+                            egui::TextEdit::singleline(filter)
+                                .hint_text(
+                                    egui::RichText::new("Search…")
+                                        .color(egui::Color32::from_gray(130)),
+                                )
+                                .desired_width(f32::INFINITY),
+                        )
+                    })
+                    .inner;
+                if just_opened {
+                    search.request_focus();
+                }
+                ui.separator();
+                egui::ScrollArea::vertical()
+                    .max_height(360.0)
+                    .show(ui, |ui| {
+                        add_operation_list(ui, loaded, filter, selected, activate, scroll_to_sel)
+                    })
+                    .inner
+            });
+            if let Some(op) = chosen.flatten() {
+                result = Some(op);
+                ui.memory_mut(|m| m.close_popup());
+            }
+        });
+        result
+    }
 }
 
 impl eframe::App for KiflaApp {
@@ -357,6 +530,8 @@ impl eframe::App for KiflaApp {
         let mut edits_dirty = false;
 
         let mut fit_requested = false;
+        let mut add_requested = false;
+        let typing = ctx.memory(|m| m.focus().is_some());
         ctx.input_mut(|i| {
             open_requested |= i.consume_shortcut(&SHORTCUT_OPEN);
             quit_requested |= i.consume_shortcut(&SHORTCUT_QUIT);
@@ -365,6 +540,9 @@ impl eframe::App for KiflaApp {
                 save_as_requested |= i.consume_shortcut(&SHORTCUT_SAVE_AS);
                 close_requested |= i.consume_shortcut(&SHORTCUT_CLOSE);
                 fit_requested |= i.consume_shortcut(&SHORTCUT_FIT);
+                if !typing {
+                    add_requested |= i.consume_shortcut(&SHORTCUT_ADD);
+                }
             }
         });
         let mut compare_held = loaded && ctx.input(|i| i.key_down(COMPARE_KEY));
@@ -502,38 +680,18 @@ impl eframe::App for KiflaApp {
         }
         let comparing = compare_held && self.original_texture.is_some();
 
-        let edits_target = if loaded { 1.0 } else { 0.0 };
-        if self.edits_anim != edits_target {
-            let dt = ctx.input(|i| i.stable_dt).clamp(0.0, 1.0 / 30.0);
-            let step = dt / 0.18;
-            if self.edits_anim < edits_target {
-                self.edits_anim = (self.edits_anim + step).min(edits_target);
-            } else {
-                self.edits_anim = (self.edits_anim - step).max(edits_target);
-            }
-            ctx.request_repaint();
-        }
-        let edits_t = self.edits_anim;
-        if edits_t > 0.001 {
+        if loaded {
             const EDITS_WIDTH: f32 = 258.0;
-            let animating = edits_t < 0.999;
-            let panel_id = if animating {
-                "edits_panel_anim"
-            } else {
-                "edits_panel"
-            };
-            let mut panel = egui::SidePanel::left(panel_id).default_width(EDITS_WIDTH);
-            panel = if animating {
-                panel.resizable(false).exact_width(EDITS_WIDTH * edits_t)
-            } else {
-                panel.resizable(true).width_range(80.0..=EDITS_WIDTH)
-            };
-            panel.show(ctx, |ui| {
+            egui::SidePanel::left("edits_panel")
+                .resizable(true)
+                .default_width(EDITS_WIDTH)
+                .width_range(80.0..=EDITS_WIDTH)
+                .show(ctx, |ui| {
                     ui.spacing_mut().slider_width = 150.0;
                     ui.style_mut().spacing.scroll.floating = false;
                     ui.style_mut().spacing.scroll.bar_width = 5.0;
 
-                    ui.heading("Edits");
+                    ui.heading("Edit Stack");
                     ui.separator();
 
                     let mut remove_index = None;
@@ -556,6 +714,16 @@ impl eframe::App for KiflaApp {
                     for h in &heights {
                         slots.push(total);
                         total += h + spacing;
+                    }
+
+                    let pin_add = total + 36.0 > ui.available_height();
+                    if pin_add {
+                        let op = egui::TopBottomPanel::bottom("edits_add_bar")
+                            .show_inside(ui, |ui| self.add_button(ui, loaded, add_requested))
+                            .inner;
+                        if op.is_some() {
+                            add_operation = op;
+                        }
                     }
 
                     egui::ScrollArea::vertical()
@@ -685,6 +853,7 @@ impl eframe::App for KiflaApp {
                                             );
                                         });
                                     }
+                                    ui.separator();
                                 });
 
                                 let used_h = inner.response.rect.height();
@@ -715,6 +884,12 @@ impl eframe::App for KiflaApp {
                                 }
                                 if new_index != d {
                                     reorder = Some((d, new_index));
+                                }
+                            }
+
+                            if !pin_add {
+                                if let Some(op) = self.add_button(ui, loaded, add_requested) {
+                                    add_operation = Some(op);
                                 }
                             }
                         });
@@ -825,7 +1000,7 @@ impl eframe::App for KiflaApp {
                         egui::Color32::from_gray(60),
                     );
                     ui.vertical_centered(|ui| {
-                        ui.add_space(ui.available_height() / 2.0 - 60.0);
+                        ui.add_space((ui.available_height() / 2.0 - 107.0).max(0.0));
                         ui.label(
                             egui::RichText::new("Open a texture to get started…")
                                 .weak()
@@ -834,7 +1009,18 @@ impl eframe::App for KiflaApp {
                         ui.add_space(8.0);
                         ui.scope(|ui| {
                             ui.spacing_mut().button_padding = egui::vec2(16.0, 6.0);
-                            if ui.button("📂 Open…").clicked() {
+                            let tip = format!(
+                                "Open a texture  ({})",
+                                ui.ctx().format_shortcut(&SHORTCUT_OPEN)
+                            );
+                            let open = ui.button("📂 Open…").on_hover_ui_at_pointer(|ui| {
+                                ui.label(
+                                    egui::RichText::new(tip)
+                                        .size(11.0)
+                                        .color(egui::Color32::from_gray(190)),
+                                );
+                            });
+                            if open.clicked() {
                                 open_requested = true;
                             }
                         });
