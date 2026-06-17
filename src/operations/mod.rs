@@ -8,6 +8,7 @@ mod flip;
 mod hue_saturation;
 mod invert;
 mod levels;
+mod offset;
 mod posterize;
 mod resize;
 mod rotate;
@@ -26,6 +27,7 @@ pub use flip::{FlipHorizontal, FlipVertical};
 pub use hue_saturation::HueSaturation;
 pub use invert::Invert;
 pub use levels::Levels;
+pub use offset::{Offset, OffsetHalfHeight, OffsetHalfWidth};
 pub use posterize::Posterize;
 pub use resize::Resize;
 pub use rotate::{Rotate90Ccw, Rotate90Cw};
@@ -118,11 +120,11 @@ pub static TRANSFORM_GROUPS: &[OperationGroup] = &[
         label: "Flip",
         kinds: &[
             OperationKind {
-                menu_label: "🔁 Flip Horizontal",
+                menu_label: "🔁 Flip Horizontal…",
                 make: || Box::new(FlipHorizontal),
             },
             OperationKind {
-                menu_label: "🔃 Flip Vertical",
+                menu_label: "🔃 Flip Vertical…",
                 make: || Box::new(FlipVertical),
             },
         ],
@@ -131,12 +133,29 @@ pub static TRANSFORM_GROUPS: &[OperationGroup] = &[
         label: "Rotate",
         kinds: &[
             OperationKind {
-                menu_label: "🔄 Rotate 90° CW",
+                menu_label: "🔄 Rotate 90° CW…",
                 make: || Box::new(Rotate90Cw),
             },
             OperationKind {
-                menu_label: "🔄 Rotate 90° CCW",
+                menu_label: "🔄 Rotate 90° CCW…",
                 make: || Box::new(Rotate90Ccw),
+            },
+        ],
+    },
+    OperationGroup {
+        label: "Offset",
+        kinds: &[
+            OperationKind {
+                menu_label: "🔀 Offset…",
+                make: || Box::new(Offset::default()),
+            },
+            OperationKind {
+                menu_label: "🔀 Offset Half Width…",
+                make: || Box::new(OffsetHalfWidth),
+            },
+            OperationKind {
+                menu_label: "🔀 Offset Half Height…",
+                make: || Box::new(OffsetHalfHeight),
             },
         ],
     },

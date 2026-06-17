@@ -32,9 +32,20 @@ fn draw_rulers(
     let painter = ui.painter_at(full);
     let bg = egui::Color32::from_gray(45);
     let line = egui::Color32::from_gray(120);
+    let minor_line = line;
     let text = egui::Color32::from_gray(190);
     let font = egui::FontId::proportional(9.0);
     let step = nice_step(70.0 / zoom);
+
+    let lead = step / 10f32.powf(step.log10().floor());
+    let subs = if lead < 1.5 {
+        10
+    } else if lead < 3.0 {
+        8
+    } else {
+        10
+    };
+    let minor = step / subs as f32;
 
     painter.rect_filled(
         egui::Rect::from_min_max(full.min, egui::pos2(full.right(), view.top())),
@@ -49,6 +60,19 @@ fn draw_rulers(
 
     let x_start = (view.left() - image_min.x) / zoom;
     let x_end = (view.right() - image_min.x) / zoom;
+
+    let mut tm = (x_start / minor).ceil() * minor;
+    while tm <= x_end {
+        let x = image_min.x + tm * zoom;
+        if x >= view.left() {
+            painter.line_segment(
+                [egui::pos2(x, view.top() - 3.0), egui::pos2(x, view.top())],
+                egui::Stroke::new(1.0, minor_line),
+            );
+        }
+        tm += minor;
+    }
+
     let mut t = (x_start / step).ceil() * step;
     while t <= x_end {
         let x = image_min.x + t * zoom;
@@ -70,6 +94,19 @@ fn draw_rulers(
 
     let y_start = (view.top() - image_min.y) / zoom;
     let y_end = (view.bottom() - image_min.y) / zoom;
+
+    let mut tm = (y_start / minor).ceil() * minor;
+    while tm <= y_end {
+        let y = image_min.y + tm * zoom;
+        if y >= view.top() {
+            painter.line_segment(
+                [egui::pos2(view.left() - 3.0, y), egui::pos2(view.left(), y)],
+                egui::Stroke::new(1.0, minor_line),
+            );
+        }
+        tm += minor;
+    }
+
     let mut t = (y_start / step).ceil() * step;
     while t <= y_end {
         let y = image_min.y + t * zoom;
@@ -1096,7 +1133,8 @@ impl eframe::App for KiflaApp {
 
                 if let Some(cursor) = response.hover_pos() {
                     let painter = ui.painter_at(rect);
-                    let guide = egui::Stroke::new(1.0, egui::Color32::from_white_alpha(90));
+                    let guide =
+                        egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(255, 255, 255, 128));
                     painter.line_segment(
                         [
                             egui::pos2(cursor.x, rect.top()),
