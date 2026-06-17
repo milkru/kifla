@@ -272,6 +272,7 @@ const SHORTCUT_CLOSE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, 
 const SHORTCUT_QUIT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Q);
 const SHORTCUT_FIT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Num0);
 const SHORTCUT_ADD: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::A);
+const SHORTCUT_ABOUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F1);
 const COMPARE_KEY: Key = Key::C;
 const SHORTCUT_COMPARE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, COMPARE_KEY);
 
@@ -304,6 +305,7 @@ pub struct KiflaApp {
     add_filter: String,
     add_selected: usize,
     add_was_open: bool,
+    show_about: bool,
     last_apply: f64,
     pending_open: Option<Receiver<Option<PathBuf>>>,
     pending_save: Option<Receiver<Option<PathBuf>>>,
@@ -337,7 +339,7 @@ impl KiflaApp {
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_default();
                 ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
-                    "Kifla - {name} ({} × {})",
+                    "kifla - {name} ({} × {})",
                     size[0], size[1]
                 )));
                 let color_image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
@@ -430,7 +432,7 @@ impl KiflaApp {
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_default();
                 ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
-                    "Kifla - {name} ({} × {})",
+                    "kifla - {name} ({} × {})",
                     self.size[0], self.size[1]
                 )));
                 self.path = Some(path);
@@ -450,7 +452,7 @@ impl KiflaApp {
         self.path = None;
         self.error = None;
         self.view = None;
-        ctx.send_viewport_cmd(egui::ViewportCommand::Title("Kifla".to_owned()));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Title("kifla".to_owned()));
     }
 
     fn add_button(
@@ -572,6 +574,9 @@ impl eframe::App for KiflaApp {
         ctx.input_mut(|i| {
             open_requested |= i.consume_shortcut(&SHORTCUT_OPEN);
             quit_requested |= i.consume_shortcut(&SHORTCUT_QUIT);
+            if i.consume_shortcut(&SHORTCUT_ABOUT) {
+                self.show_about = true;
+            }
             if loaded {
                 save_requested |= i.consume_shortcut(&SHORTCUT_SAVE);
                 save_as_requested |= i.consume_shortcut(&SHORTCUT_SAVE_AS);
@@ -623,6 +628,7 @@ impl eframe::App for KiflaApp {
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
+                    ui.style_mut().wrap = Some(false);
                     if ui
                         .add(
                             egui::Button::new("📂 Open…")
@@ -636,7 +642,7 @@ impl eframe::App for KiflaApp {
                     if ui
                         .add_enabled(
                             loaded,
-                            egui::Button::new("💾 Save…")
+                            egui::Button::new("💾 Save")
                                 .shortcut_text(ui.ctx().format_shortcut(&SHORTCUT_SAVE)),
                         )
                         .clicked()
@@ -658,7 +664,7 @@ impl eframe::App for KiflaApp {
                     if ui
                         .add_enabled(
                             loaded,
-                            egui::Button::new("✖ Close…")
+                            egui::Button::new("✖ Close")
                                 .shortcut_text(ui.ctx().format_shortcut(&SHORTCUT_CLOSE)),
                         )
                         .clicked()
@@ -669,7 +675,7 @@ impl eframe::App for KiflaApp {
                     ui.separator();
                     if ui
                         .add(
-                            egui::Button::new("🚪 Quit…")
+                            egui::Button::new("🚪 Quit")
                                 .shortcut_text(ui.ctx().format_shortcut(&SHORTCUT_QUIT)),
                         )
                         .clicked()
@@ -679,10 +685,11 @@ impl eframe::App for KiflaApp {
                     }
                 });
                 ui.menu_button("View", |ui| {
+                    ui.style_mut().wrap = Some(false);
                     if ui
                         .add_enabled(
                             loaded,
-                            egui::Button::new("Fit")
+                            egui::Button::new("🔍 Fit")
                                 .shortcut_text(ui.ctx().format_shortcut(&SHORTCUT_FIT)),
                         )
                         .clicked()
@@ -692,7 +699,7 @@ impl eframe::App for KiflaApp {
                     }
                     let original = ui.add_enabled(
                         loaded,
-                        egui::Button::new("Show Original")
+                        egui::Button::new("👁 Show Original")
                             .shortcut_text(ui.ctx().format_shortcut(&SHORTCUT_COMPARE)),
                     );
                     if original.is_pointer_button_down_on() {
@@ -709,8 +716,65 @@ impl eframe::App for KiflaApp {
                         add_operation = Some(op);
                     }
                 });
+                ui.menu_button("Help", |ui| {
+                    ui.style_mut().wrap = Some(false);
+                    if ui
+                        .add(
+                            egui::Button::new("ℹ About")
+                                .shortcut_text(ui.ctx().format_shortcut(&SHORTCUT_ABOUT)),
+                        )
+                        .clicked()
+                    {
+                        self.show_about = true;
+                        ui.close_menu();
+                    }
+                });
             });
         });
+
+        if self.show_about {
+            let mut close = false;
+            egui::Window::new("about")
+                .title_bar(false)
+                .collapsible(false)
+                .resizable(false)
+                .pivot(egui::Align2::CENTER_CENTER)
+                .default_pos(ctx.screen_rect().center())
+                .show(ctx, |ui| {
+                    ui.set_min_width(340.0);
+                    ui.horizontal(|ui| {
+                        ui.label("About");
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                if ui.small_button("✖").clicked() {
+                                    close = true;
+                                }
+                            },
+                        );
+                    });
+                    ui.separator();
+                    ui.add_space(2.0);
+                    ui.label(
+                        egui::RichText::new("kifla")
+                            .size(22.0)
+                            .color(egui::Color32::from_gray(150)),
+                    );
+                    ui.add_space(6.0);
+                    ui.label("A tiny non-destructive texture editor.");
+                    ui.add_space(8.0);
+                    ui.label(
+                        "Pile on edits, tweak them live, reorder or hide them whenever. \
+                         Your original never gets touched until you save.",
+                    );
+                    ui.add_space(8.0);
+                    ui.label(egui::RichText::new("Made with Rust.").weak());
+                    ui.add_space(2.0);
+                });
+            if close {
+                self.show_about = false;
+            }
+        }
 
         if fit_requested {
             self.fit = true;
@@ -1045,7 +1109,7 @@ impl eframe::App for KiflaApp {
                     ui.painter().text(
                         egui::pos2(area.center().x, area.top() + 40.0),
                         egui::Align2::CENTER_TOP,
-                        "Kifla",
+                        "kifla",
                         egui::FontId::proportional(112.0),
                         egui::Color32::from_gray(60),
                     );

@@ -101,7 +101,7 @@ pub static OPERATION_GROUPS: &[OperationGroup] = &[
                 make: || Box::new(SelectiveColor::default()),
             },
             OperationKind {
-                menu_label: "🔄 Invert…",
+                menu_label: "🔄 Invert",
                 make: || Box::new(Invert),
             },
         ],
@@ -120,11 +120,11 @@ pub static TRANSFORM_GROUPS: &[OperationGroup] = &[
         label: "Flip",
         kinds: &[
             OperationKind {
-                menu_label: "🔁 Flip Horizontal…",
+                menu_label: "🔁 Flip Horizontal",
                 make: || Box::new(FlipHorizontal),
             },
             OperationKind {
-                menu_label: "🔃 Flip Vertical…",
+                menu_label: "🔃 Flip Vertical",
                 make: || Box::new(FlipVertical),
             },
         ],
@@ -133,11 +133,11 @@ pub static TRANSFORM_GROUPS: &[OperationGroup] = &[
         label: "Rotate",
         kinds: &[
             OperationKind {
-                menu_label: "🔄 Rotate 90° CW…",
+                menu_label: "🔄 Rotate 90° CW",
                 make: || Box::new(Rotate90Cw),
             },
             OperationKind {
-                menu_label: "🔄 Rotate 90° CCW…",
+                menu_label: "🔄 Rotate 90° CCW",
                 make: || Box::new(Rotate90Ccw),
             },
         ],
@@ -150,11 +150,11 @@ pub static TRANSFORM_GROUPS: &[OperationGroup] = &[
                 make: || Box::new(Offset::default()),
             },
             OperationKind {
-                menu_label: "🔀 Offset Half Width…",
+                menu_label: "🔀 Offset Half Width",
                 make: || Box::new(OffsetHalfWidth),
             },
             OperationKind {
-                menu_label: "🔀 Offset Half Height…",
+                menu_label: "🔀 Offset Half Height",
                 make: || Box::new(OffsetHalfHeight),
             },
         ],
