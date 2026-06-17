@@ -814,14 +814,14 @@ impl eframe::App for KiflaApp {
                     }
                     ui.separator();
                     if ui
-                        .add_enabled(loaded, egui::Button::new("📥 Import Stack…"))
+                        .add_enabled(loaded, egui::Button::new("📥 Import Edit Stack…"))
                         .clicked()
                     {
                         import_requested = true;
                         ui.close_menu();
                     }
                     if ui
-                        .add_enabled(loaded, egui::Button::new("📤 Export Stack…"))
+                        .add_enabled(loaded, egui::Button::new("📤 Export Edit Stack…"))
                         .clicked()
                     {
                         export_requested = true;
