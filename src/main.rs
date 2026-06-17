@@ -40,6 +40,16 @@ fn main() -> eframe::Result<()> {
         "kifla",
         options,
         Box::new(|cc| {
+            let mut fonts = egui::FontDefinitions::default();
+            fonts.font_data.insert(
+                "inter".to_owned(),
+                egui::FontData::from_static(include_bytes!("../font/InterVariable.ttf")),
+            );
+            if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
+                family.insert(0, "inter".to_owned());
+            }
+            cc.egui_ctx.set_fonts(fonts);
+
             let mut style = (*cc.egui_ctx.style()).clone();
             style.visuals.handle_shape = egui::style::HandleShape::Rect { aspect_ratio: 0.0 };
             style.visuals.slider_trailing_fill = true;

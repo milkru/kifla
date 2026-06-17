@@ -728,7 +728,9 @@ impl eframe::App for KiflaApp {
                     ui.style_mut().spacing.scroll.floating = false;
                     ui.style_mut().spacing.scroll.bar_width = 5.0;
 
-                    ui.heading("Edit Stack");
+                    ui.heading(
+                        egui::RichText::new("Edit Stack").color(egui::Color32::from_gray(120)),
+                    );
                     ui.separator();
 
                     let mut remove_index = None;
@@ -795,10 +797,10 @@ impl eframe::App for KiflaApp {
                                 let color = if dim {
                                     ui.visuals().weak_text_color()
                                 } else {
-                                    ui.visuals().text_color()
+                                    egui::Color32::from_gray(175)
                                 };
                                 ui.painter().text(
-                                    resp.rect.left_center() + egui::vec2(4.0, 0.0),
+                                    resp.rect.left_center() + egui::vec2(1.0, 0.0),
                                     egui::Align2::LEFT_CENTER,
                                     entry.operation.name(),
                                     egui::FontId::proportional(14.0),
@@ -846,6 +848,7 @@ impl eframe::App for KiflaApp {
                                             false,
                                         )
                                         .show_header(ui, |ui| {
+                                            ui.spacing_mut().item_spacing.x = 2.0;
                                             if eye_toggle(ui, entry) {
                                                 edits_dirty = true;
                                                 set_collapse = Some((entry.id, entry.enabled));
@@ -873,6 +876,7 @@ impl eframe::App for KiflaApp {
                                     } else {
                                         ui.horizontal(|ui| {
                                             ui.add_space(ui.spacing().indent);
+                                            ui.spacing_mut().item_spacing.x = 2.0;
                                             if eye_toggle(ui, entry) {
                                                 edits_dirty = true;
                                                 set_collapse = Some((entry.id, entry.enabled));
@@ -912,7 +916,7 @@ impl eframe::App for KiflaApp {
                                 new_grab = Some((p.y - origin.y) - slots[i]);
                             }
                             if let (Some(d), Some(p)) = (dragging, pointer) {
-                                let center = (p.y - origin.y) - drag_grab + heights[d] / 2.0;
+                                let center = (p.y - origin.y) - drag_grab;
                                 let mut new_index = 0;
                                 for (j, sy) in slots.iter().enumerate() {
                                     if j != d && sy + heights[j] / 2.0 < center {
@@ -925,7 +929,16 @@ impl eframe::App for KiflaApp {
                             }
 
                             if !pin_add {
-                                if let Some(op) = self.add_button(ui, loaded, add_requested) {
+                                let add_rect = egui::Rect::from_min_size(
+                                    egui::pos2(origin.x, origin.y + total),
+                                    egui::vec2(width, 0.0),
+                                );
+                                let op = ui
+                                    .allocate_ui_at_rect(add_rect, |ui| {
+                                        self.add_button(ui, loaded, add_requested)
+                                    })
+                                    .inner;
+                                if let Some(op) = op {
                                     add_operation = Some(op);
                                 }
                             }
