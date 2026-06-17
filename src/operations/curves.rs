@@ -11,7 +11,11 @@ pub struct Curves {
 impl Default for Curves {
     fn default() -> Self {
         Self {
-            points: vec![egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)],
+            points: vec![
+                egui::pos2(0.0, 0.0),
+                egui::pos2(0.5, 0.5),
+                egui::pos2(1.0, 1.0),
+            ],
         }
     }
 }
