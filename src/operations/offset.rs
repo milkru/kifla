@@ -99,31 +99,3 @@ impl Operation for Offset {
         *image = offset_wrap(image, self.x as i64, self.y as i64);
     }
 }
-
-pub struct OffsetHalfWidth;
-
-impl Operation for OffsetHalfWidth {
-    crate::op_id!("offset_half_width");
-
-    fn name(&self) -> &'static str {
-        "Offset Half Width"
-    }
-
-    fn apply(&self, image: &mut image::RgbaImage) {
-        *image = offset_wrap(image, (image.width() / 2) as i64, 0);
-    }
-}
-
-pub struct OffsetHalfHeight;
-
-impl Operation for OffsetHalfHeight {
-    crate::op_id!("offset_half_height");
-
-    fn name(&self) -> &'static str {
-        "Offset Half Height"
-    }
-
-    fn apply(&self, image: &mut image::RgbaImage) {
-        *image = offset_wrap(image, 0, (image.height() / 2) as i64);
-    }
-}

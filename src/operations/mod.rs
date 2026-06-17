@@ -9,12 +9,15 @@ mod hue_saturation;
 mod indexed_color;
 mod invert;
 mod levels;
+mod make_seamless;
 mod offset;
 mod posterize;
+mod repeat;
 mod resize;
 mod rotate;
 mod selective_color;
 mod shadows_highlights;
+mod splat;
 mod threshold;
 mod vibrance;
 
@@ -29,12 +32,15 @@ pub use hue_saturation::HueSaturation;
 pub use indexed_color::IndexedColor;
 pub use invert::Invert;
 pub use levels::Levels;
-pub use offset::{Offset, OffsetHalfHeight, OffsetHalfWidth};
+pub use make_seamless::MakeSeamless;
+pub use offset::Offset;
 pub use posterize::Posterize;
+pub use repeat::Repeat;
 pub use resize::Resize;
 pub use rotate::{Rotate90Ccw, Rotate90Cw};
 pub use selective_color::SelectiveColor;
 pub use shadows_highlights::ShadowsHighlights;
+pub use splat::Splat;
 pub use threshold::Threshold;
 pub use vibrance::Vibrance;
 
@@ -64,14 +70,15 @@ pub fn op_from_json(id: &str, params: &serde_json::Value) -> Option<Box<dyn Oper
         "indexed_color" => de!(IndexedColor),
         "shadows_highlights" => de!(ShadowsHighlights),
         "offset" => de!(Offset),
+        "repeat" => de!(Repeat),
+        "make_seamless" => de!(MakeSeamless),
+        "splat" => de!(Splat),
         "resize" => de!(Resize),
         "invert" => Some(Box::new(Invert)),
         "flip_horizontal" => Some(Box::new(FlipHorizontal)),
         "flip_vertical" => Some(Box::new(FlipVertical)),
         "rotate_90_cw" => Some(Box::new(Rotate90Cw)),
         "rotate_90_ccw" => Some(Box::new(Rotate90Ccw)),
-        "offset_half_width" => Some(Box::new(OffsetHalfWidth)),
-        "offset_half_height" => Some(Box::new(OffsetHalfHeight)),
         _ => None,
     }
 }
@@ -185,19 +192,23 @@ pub static TRANSFORM_GROUPS: &[OperationGroup] = &[
         ],
     },
     OperationGroup {
-        label: "Offset",
+        label: "Tiling",
         kinds: &[
             OperationKind {
                 menu_label: "🔀 Offset…",
                 make: || Box::new(Offset::default()),
             },
             OperationKind {
-                menu_label: "🔀 Offset Half Width",
-                make: || Box::new(OffsetHalfWidth),
+                menu_label: "🧱 Repeat…",
+                make: || Box::new(Repeat::default()),
             },
             OperationKind {
-                menu_label: "🔀 Offset Half Height",
-                make: || Box::new(OffsetHalfHeight),
+                menu_label: "🧩 Make Seamless…",
+                make: || Box::new(MakeSeamless::default()),
+            },
+            OperationKind {
+                menu_label: "🎲 Splat…",
+                make: || Box::new(Splat::default()),
             },
         ],
     },

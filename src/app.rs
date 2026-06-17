@@ -273,10 +273,11 @@ const SHORTCUT_QUIT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, K
 const SHORTCUT_FIT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Num0);
 const SHORTCUT_ADD: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::A);
 const SHORTCUT_ABOUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F1);
+const SHORTCUT_TILE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::T);
 
 /// Bump when an existing operation's parameters change in an incompatible way.
 /// Adding brand-new operations does not require a bump.
-const STACK_VERSION: u32 = 1;
+const STACK_VERSION: u32 = 2;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct StackEntry {
@@ -324,6 +325,7 @@ pub struct KiflaApp {
     add_selected: usize,
     add_was_open: bool,
     show_about: bool,
+    tiled: bool,
     last_apply: f64,
     pending_open: Option<Receiver<Option<PathBuf>>>,
     pending_save: Option<Receiver<Option<PathBuf>>>,
@@ -695,6 +697,9 @@ impl eframe::App for KiflaApp {
                 save_as_requested |= i.consume_shortcut(&SHORTCUT_SAVE_AS);
                 close_requested |= i.consume_shortcut(&SHORTCUT_CLOSE);
                 fit_requested |= i.consume_shortcut(&SHORTCUT_FIT);
+                if i.consume_shortcut(&SHORTCUT_TILE) {
+                    self.tiled = !self.tiled;
+                }
                 if !typing {
                     add_requested |= i.consume_shortcut(&SHORTCUT_ADD);
                 }
@@ -854,6 +859,21 @@ impl eframe::App for KiflaApp {
                     );
                     if original.is_pointer_button_down_on() {
                         compare_held = true;
+                    }
+                    if ui
+                        .add_enabled(
+                            loaded,
+                            egui::Button::new(if self.tiled {
+                                "🧩 Tile Preview ✓"
+                            } else {
+                                "🧩 Tile Preview"
+                            })
+                            .shortcut_text(ui.ctx().format_shortcut(&SHORTCUT_TILE)),
+                        )
+                        .clicked()
+                    {
+                        self.tiled = !self.tiled;
+                        ui.close_menu();
                     }
                 });
                 ui.menu_button("Transform", |ui| {
@@ -1356,8 +1376,28 @@ impl eframe::App for KiflaApp {
                     (true, Some(original)) => original.id(),
                     _ => texture.id(),
                 };
-                ui.painter_at(rect)
-                    .image(draw_id, image_rect, uv, egui::Color32::WHITE);
+                let painter = ui.painter_at(rect);
+                if self.tiled && image_rect.width() >= 1.0 && image_rect.height() >= 1.0 {
+                    let (tw, th) = (image_rect.width(), image_rect.height());
+                    let start_x = rect.left() - (rect.left() - image_rect.min.x).rem_euclid(tw);
+                    let start_y = rect.top() - (rect.top() - image_rect.min.y).rem_euclid(th);
+                    let mut ty = start_y;
+                    let mut rows = 0;
+                    while ty < rect.bottom() && rows < 256 {
+                        let mut tx = start_x;
+                        let mut cols = 0;
+                        while tx < rect.right() && cols < 256 {
+                            let r = egui::Rect::from_min_size(egui::pos2(tx, ty), image_rect.size());
+                            painter.image(draw_id, r, uv, egui::Color32::WHITE);
+                            tx += tw;
+                            cols += 1;
+                        }
+                        ty += th;
+                        rows += 1;
+                    }
+                } else {
+                    painter.image(draw_id, image_rect, uv, egui::Color32::WHITE);
+                }
 
                 if let Some(cursor) = response.hover_pos() {
                     let painter = ui.painter_at(rect);
