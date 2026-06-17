@@ -26,7 +26,7 @@ fn main() -> eframe::Result<()> {
     let mut viewport = egui::ViewportBuilder::default()
         .with_inner_size([1280.0, 800.0])
         .with_min_inner_size([800.0, 500.0])
-        .with_title("Kifla");
+        .with_title("kifla");
     if let Some(icon) = load_icon() {
         viewport = viewport.with_icon(icon);
     }
@@ -37,7 +37,7 @@ fn main() -> eframe::Result<()> {
     };
 
     eframe::run_native(
-        "Kifla",
+        "kifla",
         options,
         Box::new(|cc| {
             let mut style = (*cc.egui_ctx.style()).clone();
@@ -48,6 +48,7 @@ fn main() -> eframe::Result<()> {
             style.visuals.override_text_color = Some(egui::Color32::from_gray(235));
             style.visuals.selection.bg_fill = egui::Color32::from_gray(150);
             style.visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_gray(220));
+            style.interaction.selectable_labels = false;
             cc.egui_ctx.set_style(style);
             Box::<KiflaApp>::default()
         }),

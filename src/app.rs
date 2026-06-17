@@ -169,6 +169,7 @@ const COMPARE_KEY: Key = Key::C;
 const SHORTCUT_COMPARE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, COMPARE_KEY);
 
 struct HistoryEntry {
+    id: u64,
     operation: Box<dyn Operation>,
     enabled: bool,
 }
@@ -187,6 +188,11 @@ pub struct KiflaApp {
     pan: egui::Vec2,
     fit: bool,
     view: Option<(egui::Rect, egui::Pos2)>,
+    dragging: Option<usize>,
+    drag_grab: f32,
+    reordered: bool,
+    row_heights: std::collections::HashMap<u64, f32>,
+    next_id: u64,
     dirty: bool,
     last_apply: f64,
     pending_open: Option<Receiver<Option<PathBuf>>>,
@@ -501,73 +507,229 @@ impl eframe::App for KiflaApp {
                 .default_width(258.0)
                 .show(ctx, |ui| {
                     ui.spacing_mut().slider_width = 150.0;
+                    ui.style_mut().spacing.scroll.floating = false;
+                    ui.style_mut().spacing.scroll.bar_width = 5.0;
 
                     ui.heading("Edits");
                     ui.separator();
 
                     let mut remove_index = None;
+                    let mut set_collapse: Option<(u64, bool)> = None;
+                    let mut drag_start: Option<usize> = None;
+                    let mut reorder: Option<(usize, usize)> = None;
+                    let mut new_grab: Option<f32> = None;
+                    let mut measured: Vec<(u64, f32)> = Vec::new();
+                    let dragging = self.dragging;
+                    let drag_grab = self.drag_grab;
+                    let spacing = ui.spacing().item_spacing.y;
+
+                    let heights: Vec<f32> = self
+                        .history
+                        .iter()
+                        .map(|e| self.row_heights.get(&e.id).copied().unwrap_or(24.0))
+                        .collect();
+                    let mut slots = Vec::with_capacity(self.history.len());
+                    let mut total = 0.0;
+                    for h in &heights {
+                        slots.push(total);
+                        total += h + spacing;
+                    }
+
                     egui::ScrollArea::vertical()
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
-                            for (i, entry) in self.history.iter_mut().enumerate() {
-                                if entry.operation.has_settings() {
-                                    let id = egui::Id::new(("history_entry", i));
-                                    let state =
-                                egui::collapsing_header::CollapsingState::load_with_default_open(
-                                    ui.ctx(),
-                                    id,
-                                    false,
-                                );
-                                    let header = state.show_header(ui, |ui| {
-                                        if ui.checkbox(&mut entry.enabled, "").changed() {
-                                            history_dirty = true;
-                                        }
-                                        let enabled = entry.enabled;
-                                        ui.add_enabled_ui(enabled, |ui| {
-                                            ui.label(entry.operation.name());
-                                        });
-                                        ui.with_layout(
-                                            egui::Layout::right_to_left(egui::Align::Center),
-                                            |ui| {
-                                                if ui.small_button("×").clicked() {
-                                                    remove_index = Some(i);
-                                                }
-                                            },
-                                        );
-                                    });
-                                    let enabled = entry.enabled;
-                                    header.body(|ui| {
-                                        ui.add_enabled_ui(enabled, |ui| {
-                                            if entry.operation.settings_ui(ui) {
-                                                history_dirty = true;
-                                            }
-                                        });
-                                    });
+                            let width = ui.available_width();
+                            let (area, _) = ui.allocate_exact_size(
+                                egui::vec2(width, total.max(1.0)),
+                                egui::Sense::hover(),
+                            );
+                            let origin = area.min;
+                            let pointer = ui.input(|i| i.pointer.hover_pos());
+
+                            let eye_toggle = |ui: &mut egui::Ui, entry: &mut HistoryEntry| {
+                                let text = if entry.enabled {
+                                    egui::RichText::new("👁")
                                 } else {
-                                    ui.horizontal(|ui| {
-                                        ui.add_space(ui.spacing().indent);
-                                        if ui.checkbox(&mut entry.enabled, "").changed() {
-                                            history_dirty = true;
-                                        }
-                                        let enabled = entry.enabled;
-                                        ui.add_enabled_ui(enabled, |ui| {
-                                            ui.label(entry.operation.name());
-                                        });
-                                        ui.with_layout(
-                                            egui::Layout::right_to_left(egui::Align::Center),
-                                            |ui| {
-                                                if ui.small_button("×").clicked() {
-                                                    remove_index = Some(i);
+                                    egui::RichText::new("👁").weak()
+                                };
+                                if ui.selectable_label(false, text).clicked() {
+                                    entry.enabled = !entry.enabled;
+                                    true
+                                } else {
+                                    false
+                                }
+                            };
+
+                            let name_handle = |ui: &mut egui::Ui, entry: &HistoryEntry, dim: bool| {
+                                let size =
+                                    egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
+                                let resp = ui.allocate_response(size, egui::Sense::drag());
+                                let color = if dim {
+                                    ui.visuals().weak_text_color()
+                                } else {
+                                    ui.visuals().text_color()
+                                };
+                                ui.painter().text(
+                                    resp.rect.left_center() + egui::vec2(4.0, 0.0),
+                                    egui::Align2::LEFT_CENTER,
+                                    entry.operation.name(),
+                                    egui::FontId::proportional(14.0),
+                                    color,
+                                );
+                                if resp.hovered() || resp.dragged() {
+                                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+                                }
+                                resp.drag_started()
+                            };
+
+                            let order: Vec<usize> = (0..self.history.len())
+                                .filter(|i| Some(*i) != dragging)
+                                .chain(dragging)
+                                .collect();
+                            for i in order {
+                                let entry = &mut self.history[i];
+                                let is_dragged = dragging == Some(i);
+                                let target = if is_dragged {
+                                    match pointer {
+                                        Some(p) => (p.y - origin.y) - drag_grab,
+                                        None => slots[i],
+                                    }
+                                } else {
+                                    slots[i]
+                                };
+                                let dur = if is_dragged { 0.0 } else { 0.12 };
+                                let y = ui.ctx().animate_value_with_time(
+                                    egui::Id::new(("row_y", entry.id)),
+                                    target,
+                                    dur,
+                                );
+                                let row_rect = egui::Rect::from_min_size(
+                                    egui::pos2(origin.x, (origin.y + y).round()),
+                                    egui::vec2(width, heights[i].max(1.0)),
+                                );
+                                let dim = !entry.enabled;
+
+                                let inner = ui.allocate_ui_at_rect(row_rect, |ui| {
+                                    if entry.operation.has_settings() {
+                                        let cid = egui::Id::new(("edit_body", entry.id));
+                                        egui::collapsing_header::CollapsingState::load_with_default_open(
+                                            ui.ctx(),
+                                            cid,
+                                            false,
+                                        )
+                                        .show_header(ui, |ui| {
+                                            if eye_toggle(ui, entry) {
+                                                history_dirty = true;
+                                                set_collapse = Some((entry.id, entry.enabled));
+                                            }
+                                            ui.with_layout(
+                                                egui::Layout::right_to_left(egui::Align::Center),
+                                                |ui| {
+                                                    if ui.small_button("×").clicked() {
+                                                        remove_index = Some(i);
+                                                    }
+                                                    if name_handle(ui, entry, dim) {
+                                                        drag_start = Some(i);
+                                                    }
+                                                },
+                                            );
+                                        })
+                                        .body(|ui| {
+                                            let enabled = entry.enabled;
+                                            ui.add_enabled_ui(enabled, |ui| {
+                                                if entry.operation.settings_ui(ui) {
+                                                    history_dirty = true;
                                                 }
-                                            },
-                                        );
-                                    });
+                                            });
+                                        });
+                                    } else {
+                                        ui.horizontal(|ui| {
+                                            ui.add_space(ui.spacing().indent);
+                                            if eye_toggle(ui, entry) {
+                                                history_dirty = true;
+                                                set_collapse = Some((entry.id, entry.enabled));
+                                            }
+                                            ui.with_layout(
+                                                egui::Layout::right_to_left(egui::Align::Center),
+                                                |ui| {
+                                                    if ui.small_button("×").clicked() {
+                                                        remove_index = Some(i);
+                                                    }
+                                                    if name_handle(ui, entry, dim) {
+                                                        drag_start = Some(i);
+                                                    }
+                                                },
+                                            );
+                                        });
+                                    }
+                                });
+
+                                let used_h = inner.response.rect.height();
+                                measured.push((entry.id, used_h.round()));
+                                if is_dragged {
+                                    let band = egui::Rect::from_min_size(
+                                        egui::pos2(origin.x, (origin.y + y).round()),
+                                        egui::vec2(width, used_h),
+                                    );
+                                    ui.painter().rect_filled(
+                                        band,
+                                        3.0,
+                                        egui::Color32::from_white_alpha(5),
+                                    );
+                                }
+                            }
+
+                            if let (Some(i), Some(p)) = (drag_start, pointer) {
+                                new_grab = Some((p.y - origin.y) - slots[i]);
+                            }
+                            if let (Some(d), Some(p)) = (dragging, pointer) {
+                                let center = (p.y - origin.y) - drag_grab + heights[d] / 2.0;
+                                let mut new_index = 0;
+                                for (j, sy) in slots.iter().enumerate() {
+                                    if j != d && sy + heights[j] / 2.0 < center {
+                                        new_index += 1;
+                                    }
+                                }
+                                if new_index != d {
+                                    reorder = Some((d, new_index));
                                 }
                             }
                         });
 
+                    for (id, h) in measured {
+                        self.row_heights.insert(id, h);
+                    }
+                    if let Some((id, open)) = set_collapse {
+                        let cid = egui::Id::new(("edit_body", id));
+                        let mut state =
+                            egui::collapsing_header::CollapsingState::load_with_default_open(
+                                ctx, cid, false,
+                            );
+                        state.set_open(open);
+                        state.store(ctx);
+                    }
+                    if let Some(i) = drag_start {
+                        self.dragging = Some(i);
+                        if let Some(g) = new_grab {
+                            self.drag_grab = g;
+                        }
+                    }
+                    if let Some((from, to)) = reorder {
+                        let entry = self.history.remove(from);
+                        self.history.insert(to, entry);
+                        self.dragging = Some(to);
+                        self.reordered = true;
+                    }
+                    if !ctx.input(|i| i.pointer.primary_down()) {
+                        self.dragging = None;
+                        if self.reordered {
+                            self.reordered = false;
+                            history_dirty = true;
+                        }
+                    }
                     if let Some(i) = remove_index {
                         self.history.remove(i);
+                        self.dragging = None;
                         history_dirty = true;
                     }
                 });
@@ -740,12 +902,15 @@ impl eframe::App for KiflaApp {
                 operation.on_added(result.width(), result.height());
             }
             let has_settings = operation.has_settings();
+            self.next_id += 1;
+            let entry_id = self.next_id;
             self.history.push(HistoryEntry {
+                id: entry_id,
                 operation,
                 enabled: true,
             });
             if has_settings {
-                let id = egui::Id::new(("history_entry", self.history.len() - 1));
+                let id = egui::Id::new(("edit_body", entry_id));
                 let mut state =
                     egui::collapsing_header::CollapsingState::load_with_default_open(ctx, id, true);
                 state.set_open(true);

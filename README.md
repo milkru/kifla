@@ -1,4 +1,4 @@
-# Kifla
+# kifla
 
 A small desktop app for tinkering with textures.
 
