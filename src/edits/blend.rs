@@ -6,13 +6,13 @@ use crate::edit::Edit;
 use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
-pub struct MakeSeamless {
+pub struct Blend {
     falloff: f32,
     overlap_x: f32,
     overlap_y: f32,
 }
 
-impl Default for MakeSeamless {
+impl Default for Blend {
     fn default() -> Self {
         Self {
             falloff: 0.5,
@@ -22,11 +22,11 @@ impl Default for MakeSeamless {
     }
 }
 
-impl Edit for MakeSeamless {
-    crate::edit_serde!("make_seamless");
+impl Edit for Blend {
+    crate::edit_serde!("blend");
 
     fn name(&self) -> &'static str {
-        "Make Seamless"
+        "Blend"
     }
 
     fn has_settings(&self) -> bool {

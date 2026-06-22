@@ -1,4 +1,5 @@
 mod black_white;
+mod blend;
 mod brightness_contrast;
 mod channel_mixer;
 mod color_balance;
@@ -10,7 +11,6 @@ mod hue_saturation;
 mod indexed_color;
 mod invert;
 mod levels;
-mod make_seamless;
 mod offset;
 mod posterize;
 mod repeat;
@@ -18,11 +18,12 @@ mod resize;
 mod rotate;
 mod selective_color;
 mod shadows_highlights;
-mod splat;
+mod skew;
 mod threshold;
 mod vibrance;
 
 pub use black_white::BlackWhite;
+pub use blend::Blend;
 pub use brightness_contrast::BrightnessContrast;
 pub use channel_mixer::ChannelMixer;
 pub use color_balance::ColorBalance;
@@ -34,15 +35,14 @@ pub use hue_saturation::HueSaturation;
 pub use indexed_color::IndexedColor;
 pub use invert::Invert;
 pub use levels::Levels;
-pub use make_seamless::MakeSeamless;
 pub use offset::Offset;
 pub use posterize::Posterize;
 pub use repeat::Repeat;
 pub use resize::Resize;
-pub use rotate::{Rotate90Ccw, Rotate90Cw};
+pub use rotate::{Rotate, Rotate90Ccw, Rotate90Cw};
 pub use selective_color::SelectiveColor;
 pub use shadows_highlights::ShadowsHighlights;
-pub use splat::Splat;
+pub use skew::Skew;
 pub use threshold::Threshold;
 pub use vibrance::Vibrance;
 
@@ -73,8 +73,9 @@ pub fn edit_from_json(id: &str, params: &serde_json::Value) -> Option<Box<dyn Ed
         "shadows_highlights" => de!(ShadowsHighlights),
         "offset" => de!(Offset),
         "repeat" => de!(Repeat),
-        "make_seamless" => de!(MakeSeamless),
-        "splat" => de!(Splat),
+        "blend" | "make_seamless" => de!(Blend),
+        "skew" => de!(Skew),
+        "rotate" => de!(Rotate),
         "resize" => de!(Resize),
         "crop" => de!(Crop),
         "invert" => Some(Box::new(Invert)),
@@ -208,12 +209,16 @@ pub static TRANSFORM_GROUPS: &[EditGroup] = &[
                 make: || Box::new(Repeat::default()),
             },
             EditKind {
-                menu_label: "🧩 Make Seamless…",
-                make: || Box::new(MakeSeamless::default()),
+                menu_label: "🌫 Blend…",
+                make: || Box::new(Blend::default()),
             },
             EditKind {
-                menu_label: "🎲 Splat…",
-                make: || Box::new(Splat::default()),
+                menu_label: "🌀 Rotate…",
+                make: || Box::new(Rotate::default()),
+            },
+            EditKind {
+                menu_label: "🔺 Skew…",
+                make: || Box::new(Skew::default()),
             },
         ],
     },
