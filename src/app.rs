@@ -275,7 +275,7 @@ const SHORTCUT_TILE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, K
 /// Adding brand-new edits does not require a bump.
 const STACK_VERSION: u32 = 2;
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 struct StackEntry {
     id: String,
     enabled: bool,
@@ -317,6 +317,8 @@ pub struct KiflaApp {
     row_heights: std::collections::HashMap<u64, f32>,
     next_id: u64,
     dirty: bool,
+    unsaved: bool,
+    saved_stack: Vec<StackEntry>,
     add_filter: String,
     add_selected: usize,
     add_was_open: bool,
@@ -330,6 +332,47 @@ pub struct KiflaApp {
 }
 
 impl KiflaApp {
+    fn refresh_title(&self, ctx: &egui::Context) {
+        let Some(name) = self
+            .path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+        else {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title("kifla".to_owned()));
+            return;
+        };
+        let star = if self.unsaved { "*" } else { "" };
+        ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
+            "kifla - {star}{name} ({} × {})",
+            self.size[0], self.size[1]
+        )));
+    }
+
+    fn stack_entries(&self) -> Vec<StackEntry> {
+        self.edits
+            .iter()
+            .map(|e| StackEntry {
+                id: e.edit.id().to_owned(),
+                enabled: e.enabled,
+                params: e.edit.to_json(),
+            })
+            .collect()
+    }
+
+    fn update_unsaved(&mut self, ctx: &egui::Context) {
+        // Disabled edits don't affect the image, so ignore them (and their
+        // params) when deciding whether there are unsaved changes.
+        let effective = |entries: &[StackEntry]| -> Vec<StackEntry> {
+            entries.iter().filter(|e| e.enabled).cloned().collect()
+        };
+        let unsaved = effective(&self.stack_entries()) != effective(&self.saved_stack);
+        if unsaved != self.unsaved {
+            self.unsaved = unsaved;
+            self.refresh_title(ctx);
+        }
+    }
+
     fn open_texture(&mut self) {
         if self.pending_open.is_some() {
             return;
@@ -352,14 +395,6 @@ impl KiflaApp {
             Ok(img) => {
                 let rgba = img.to_rgba8();
                 let size = [rgba.width() as usize, rgba.height() as usize];
-                let name = path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_default();
-                ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
-                    "kifla - {name} ({} × {})",
-                    size[0], size[1]
-                )));
                 let color_image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
                 self.original_texture =
                     Some(ctx.load_texture("original", color_image, egui::TextureOptions::NEAREST));
@@ -368,6 +403,9 @@ impl KiflaApp {
                 self.path = Some(path);
                 self.error = None;
                 self.fit = true;
+                self.unsaved = false;
+                self.saved_stack = self.stack_entries();
+                self.refresh_title(ctx);
                 self.rebuild(ctx);
             }
             Err(err) => {
@@ -397,13 +435,18 @@ impl KiflaApp {
         self.result = Some(result);
     }
 
-    fn save(&mut self) {
+    fn save(&mut self, ctx: &egui::Context) {
         let (Some(result), Some(path)) = (&self.result, &self.path) else {
             return;
         };
 
         match save_image(result, path) {
-            Ok(()) => self.error = None,
+            Ok(()) => {
+                self.error = None;
+                self.unsaved = false;
+                self.saved_stack = self.stack_entries();
+                self.refresh_title(ctx);
+            }
             Err(err) => self.error = Some(format!("Failed to save image: {err}")),
         }
     }
@@ -441,16 +484,11 @@ impl KiflaApp {
         };
         match save_image(result, &path) {
             Ok(()) => {
-                let name = path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_default();
-                ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
-                    "kifla - {name} ({} × {})",
-                    self.size[0], self.size[1]
-                )));
                 self.path = Some(path);
                 self.error = None;
+                self.unsaved = false;
+                self.saved_stack = self.stack_entries();
+                self.refresh_title(ctx);
             }
             Err(err) => self.error = Some(format!("Failed to save image: {err}")),
         }
@@ -474,15 +512,7 @@ impl KiflaApp {
     }
 
     fn write_stack(&mut self, path: PathBuf) {
-        let edits = self
-            .edits
-            .iter()
-            .map(|e| StackEntry {
-                id: e.edit.id().to_owned(),
-                enabled: e.enabled,
-                params: e.edit.to_json(),
-            })
-            .collect();
+        let edits = self.stack_entries();
         let file = StackFile {
             version: STACK_VERSION,
             edits,
@@ -545,6 +575,7 @@ impl KiflaApp {
         }
         self.edits = edits;
         self.error = None;
+        self.update_unsaved(ctx);
         self.rebuild(ctx);
     }
 
@@ -558,7 +589,9 @@ impl KiflaApp {
         self.path = None;
         self.error = None;
         self.view = None;
-        ctx.send_viewport_cmd(egui::ViewportCommand::Title("kifla".to_owned()));
+        self.unsaved = false;
+        self.saved_stack = Vec::new();
+        self.refresh_title(ctx);
     }
 
     fn add_button(
@@ -1435,7 +1468,7 @@ impl eframe::App for KiflaApp {
             self.open_texture();
         }
         if save_requested {
-            self.save();
+            self.save(ctx);
         }
         if save_as_requested {
             self.save_as();
@@ -1474,6 +1507,9 @@ impl eframe::App for KiflaApp {
             edits_dirty = true;
         }
         self.dirty |= edits_dirty;
+        if edits_dirty {
+            self.update_unsaved(ctx);
+        }
         if self.dirty {
             // Throttle stack re-application to ~30fps while settings are dragged.
             const INTERVAL: f64 = 1.0 / 30.0;
