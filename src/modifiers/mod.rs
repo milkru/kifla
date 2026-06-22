@@ -11,6 +11,7 @@ mod hue_saturation;
 mod indexed_color;
 mod invert;
 mod levels;
+mod lighting;
 mod offset;
 mod posterize;
 mod repeat;
@@ -35,6 +36,7 @@ pub use hue_saturation::HueSaturation;
 pub use indexed_color::IndexedColor;
 pub use invert::Invert;
 pub use levels::Levels;
+pub use lighting::Lighting;
 pub use offset::Offset;
 pub use posterize::Posterize;
 pub use repeat::Repeat;
@@ -71,6 +73,7 @@ pub fn modifier_from_json(id: &str, params: &serde_json::Value) -> Option<Box<dy
         "selective_color" => de!(SelectiveColor),
         "indexed_color" => de!(IndexedColor),
         "shadows_highlights" => de!(ShadowsHighlights),
+        "lighting" => de!(Lighting),
         "offset" => de!(Offset),
         "repeat" => de!(Repeat),
         "blend" | "make_seamless" => de!(Blend),
@@ -162,10 +165,16 @@ pub static IMAGE_GROUPS: &[ModifierGroup] = &[
     },
     ModifierGroup {
         label: "Light",
-        kinds: &[ModifierKind {
-            menu_label: "🌗 Shadows / Highlights…",
-            make: || Box::new(ShadowsHighlights::default()),
-        }],
+        kinds: &[
+            ModifierKind {
+                menu_label: "🌗 Shadows / Highlights…",
+                make: || Box::new(ShadowsHighlights::default()),
+            },
+            ModifierKind {
+                menu_label: "💡 Lighting Normalization…",
+                make: || Box::new(Lighting::default()),
+            },
+        ],
     },
 ];
 
