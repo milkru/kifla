@@ -1,5 +1,57 @@
 use eframe::egui;
 
+/// A numeric box that commits on drag release or focus loss, and can be
+/// fine-tuned by ±1 with Ctrl+scroll while hovered. Returns true when the
+/// value should be committed.
+pub fn drag_value<Num: egui::emath::Numeric>(
+    ui: &mut egui::Ui,
+    value: &mut Num,
+    range: std::ops::RangeInclusive<Num>,
+) -> bool {
+    let response = ui.add(egui::DragValue::new(value).clamp_range(range.clone()));
+    fine_tune(ui, &response, value, range)
+}
+
+/// Adds Ctrl+scroll fine-tuning to an already-added `DragValue` response.
+/// While Ctrl is held, scrolling nudges the value live without committing;
+/// the commit (which triggers a re-render) fires once Ctrl is released.
+/// Returns true when the value should be committed.
+pub fn fine_tune<Num: egui::emath::Numeric>(
+    ui: &egui::Ui,
+    response: &egui::Response,
+    value: &mut Num,
+    range: std::ops::RangeInclusive<Num>,
+) -> bool {
+    let pending_id = response.id.with("ctrl_scroll_pending");
+
+    if response.hovered() {
+        let dy = ui.input(|i| {
+            i.events.iter().find_map(|e| match e {
+                egui::Event::MouseWheel {
+                    delta, modifiers, ..
+                } if modifiers.ctrl => Some(delta.y),
+                _ => None,
+            })
+        });
+        if let Some(dy) = dy {
+            if dy != 0.0 {
+                let v = (value.to_f64() + dy.signum() as f64)
+                    .clamp(range.start().to_f64(), range.end().to_f64());
+                *value = Num::from_f64(v);
+                ui.data_mut(|d| d.insert_temp(pending_id, true));
+            }
+        }
+    }
+
+    let pending = ui.data(|d| d.get_temp::<bool>(pending_id).unwrap_or(false));
+    if pending && !ui.input(|i| i.modifiers.ctrl) {
+        ui.data_mut(|d| d.insert_temp(pending_id, false));
+        return true;
+    }
+
+    response.drag_released() || response.lost_focus()
+}
+
 pub fn slider(
     ui: &mut egui::Ui,
     label: &str,

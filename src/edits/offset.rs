@@ -3,6 +3,7 @@ use image::RgbaImage;
 use rayon::prelude::*;
 
 use crate::edit::Edit;
+use crate::widgets;
 
 fn offset_wrap(image: &RgbaImage, ox: i64, oy: i64) -> RgbaImage {
     let (w, h) = (image.width(), image.height());
@@ -70,13 +71,11 @@ impl Edit for Offset {
         let mut changed = false;
         ui.horizontal(|ui| {
             ui.label("X");
-            let r = ui.add(egui::DragValue::new(&mut self.x).clamp_range(-bx..=bx));
-            changed |= r.drag_released() || r.lost_focus();
+            changed |= widgets::drag_value(ui, &mut self.x, -bx..=bx);
         });
         ui.horizontal(|ui| {
             ui.label("Y");
-            let r = ui.add(egui::DragValue::new(&mut self.y).clamp_range(-by..=by));
-            changed |= r.drag_released() || r.lost_focus();
+            changed |= widgets::drag_value(ui, &mut self.y, -by..=by);
         });
         changed
     }

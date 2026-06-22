@@ -2,6 +2,7 @@ use eframe::egui;
 
 use crate::edit::Edit;
 use crate::pixel::map_rgb;
+use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Posterize {
@@ -39,7 +40,7 @@ impl Edit for Posterize {
                     .fixed_decimals(0)
                     .speed(1.0),
             );
-            changed |= r.drag_released() || r.lost_focus();
+            changed |= widgets::fine_tune(ui, &r, &mut self.levels, 2.0..=256.0);
         });
         changed
     }

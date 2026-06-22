@@ -2,6 +2,7 @@ mod black_white;
 mod brightness_contrast;
 mod channel_mixer;
 mod color_balance;
+mod crop;
 mod curves;
 mod exposure;
 mod flip;
@@ -25,6 +26,7 @@ pub use black_white::BlackWhite;
 pub use brightness_contrast::BrightnessContrast;
 pub use channel_mixer::ChannelMixer;
 pub use color_balance::ColorBalance;
+pub use crop::Crop;
 pub use curves::Curves;
 pub use exposure::Exposure;
 pub use flip::{FlipHorizontal, FlipVertical};
@@ -74,6 +76,7 @@ pub fn edit_from_json(id: &str, params: &serde_json::Value) -> Option<Box<dyn Ed
         "make_seamless" => de!(MakeSeamless),
         "splat" => de!(Splat),
         "resize" => de!(Resize),
+        "crop" => de!(Crop),
         "invert" => Some(Box::new(Invert)),
         "flip_horizontal" => Some(Box::new(FlipHorizontal)),
         "flip_vertical" => Some(Box::new(FlipVertical)),
@@ -216,9 +219,15 @@ pub static TRANSFORM_GROUPS: &[EditGroup] = &[
     },
     EditGroup {
         label: "Size",
-        kinds: &[EditKind {
-            menu_label: "📐 Resize…",
-            make: || Box::new(Resize::default()),
-        }],
+        kinds: &[
+            EditKind {
+                menu_label: "📐 Resize…",
+                make: || Box::new(Resize::default()),
+            },
+            EditKind {
+                menu_label: "✂ Crop…",
+                make: || Box::new(Crop::default()),
+            },
+        ],
     },
 ];

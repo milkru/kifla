@@ -50,8 +50,7 @@ impl Edit for IndexedColor {
         let mut changed = false;
         ui.horizontal(|ui| {
             ui.label("Colors");
-            let r = ui.add(egui::DragValue::new(&mut self.colors).clamp_range(2..=256));
-            changed |= r.drag_released() || r.lost_focus();
+            changed |= widgets::drag_value(ui, &mut self.colors, 2..=256);
         });
         changed |= ui.checkbox(&mut self.dither, "Dither").changed();
         if self.dither {

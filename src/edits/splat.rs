@@ -92,8 +92,7 @@ impl Edit for Splat {
         let mut changed = false;
         ui.horizontal(|ui| {
             ui.label("Count");
-            let r = ui.add(egui::DragValue::new(&mut self.count).clamp_range(0..=64));
-            changed |= r.drag_released() || r.lost_focus();
+            changed |= widgets::drag_value(ui, &mut self.count, 0..=64);
         });
         changed |= widgets::slider(ui, "Scale", &mut self.scale, 0.25..=2.0);
         changed |= widgets::slider(ui, "Rotation", &mut self.rotation, 0.0..=1.0);

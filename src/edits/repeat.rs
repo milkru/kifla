@@ -3,6 +3,7 @@ use image::RgbaImage;
 use rayon::prelude::*;
 
 use crate::edit::Edit;
+use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Repeat {
@@ -36,13 +37,11 @@ impl Edit for Repeat {
         let mut changed = false;
         ui.horizontal(|ui| {
             ui.label("X");
-            let r = ui.add(egui::DragValue::new(&mut self.x).clamp_range(1..=32));
-            changed |= r.drag_released() || r.lost_focus();
+            changed |= widgets::drag_value(ui, &mut self.x, 1..=32);
         });
         ui.horizontal(|ui| {
             ui.label("Y");
-            let r = ui.add(egui::DragValue::new(&mut self.y).clamp_range(1..=32));
-            changed |= r.drag_released() || r.lost_focus();
+            changed |= widgets::drag_value(ui, &mut self.y, 1..=32);
         });
         changed
     }

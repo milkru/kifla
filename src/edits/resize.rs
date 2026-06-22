@@ -91,13 +91,11 @@ impl Edit for Resize {
         let mut changed = false;
         ui.horizontal(|ui| {
             ui.label("Width");
-            let r = ui.add(egui::DragValue::new(&mut self.width).clamp_range(1..=16384));
-            changed |= r.drag_released() || r.lost_focus();
+            changed |= widgets::drag_value(ui, &mut self.width, 1..=16384);
         });
         ui.horizontal(|ui| {
             ui.label("Height");
-            let r = ui.add(egui::DragValue::new(&mut self.height).clamp_range(1..=16384));
-            changed |= r.drag_released() || r.lost_focus();
+            changed |= widgets::drag_value(ui, &mut self.height, 1..=16384);
         });
         ui.separator();
         egui::ComboBox::from_id_source("resize_sampling")
