@@ -1,7 +1,7 @@
 use eframe::egui;
 
 use crate::color;
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::pixel::{par_pixels, to_u8};
 use crate::widgets;
 
@@ -21,8 +21,8 @@ fn range_ui(ui: &mut egui::Ui, title: &str, amounts: &mut [f32; 3]) -> bool {
     changed
 }
 
-impl Edit for ColorBalance {
-    crate::edit_serde!("color_balance");
+impl Modifier for ColorBalance {
+    crate::modifier_serde!("color_balance");
 
     fn name(&self) -> &'static str {
         "Color Balance"

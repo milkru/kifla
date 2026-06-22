@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::pixel::map_rgb;
 use crate::widgets;
 
@@ -25,8 +25,8 @@ impl Default for Levels {
     }
 }
 
-impl Edit for Levels {
-    crate::edit_serde!("levels");
+impl Modifier for Levels {
+    crate::modifier_serde!("levels");
 
     fn name(&self) -> &'static str {
         "Levels"

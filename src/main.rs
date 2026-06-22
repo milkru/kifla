@@ -2,8 +2,8 @@
 
 mod app;
 mod color;
-mod edit;
-mod edits;
+mod modifier;
+mod modifiers;
 mod pixel;
 mod widgets;
 

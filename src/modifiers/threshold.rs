@@ -1,7 +1,7 @@
 use eframe::egui;
 
 use crate::color;
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::pixel::par_pixels;
 use crate::widgets;
 
@@ -20,8 +20,8 @@ impl Default for Threshold {
     }
 }
 
-impl Edit for Threshold {
-    crate::edit_serde!("threshold");
+impl Modifier for Threshold {
+    crate::modifier_serde!("threshold");
 
     fn name(&self) -> &'static str {
         "Threshold"

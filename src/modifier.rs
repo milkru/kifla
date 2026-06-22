@@ -1,13 +1,13 @@
 use eframe::egui;
 
-pub trait Edit {
+pub trait Modifier {
     fn name(&self) -> &'static str;
 
     /// Stable identifier used when saving/loading a stack. Must be unique and
-    /// must never change for an existing edit.
+    /// must never change for an existing modifier.
     fn id(&self) -> &'static str;
 
-    /// Serialize this edit's parameters. Parameterless edits keep the default
+    /// Serialize this modifier's parameters. Parameterless modifiers keep the default
     /// (`null`).
     fn to_json(&self) -> serde_json::Value {
         serde_json::Value::Null
@@ -26,9 +26,9 @@ pub trait Edit {
     fn on_added(&mut self, _width: u32, _height: u32) {}
 }
 
-/// Implements `id` for a parameterless edit.
+/// Implements `id` for a parameterless modifier.
 #[macro_export]
-macro_rules! edit_id {
+macro_rules! modifier_id {
     ($id:literal) => {
         fn id(&self) -> &'static str {
             $id
@@ -36,9 +36,9 @@ macro_rules! edit_id {
     };
 }
 
-/// Implements `id` and `to_json` for an edit whose struct derives `Serialize`.
+/// Implements `id` and `to_json` for an modifier whose struct derives `Serialize`.
 #[macro_export]
-macro_rules! edit_serde {
+macro_rules! modifier_serde {
     ($id:literal) => {
         fn id(&self) -> &'static str {
             $id
@@ -49,12 +49,12 @@ macro_rules! edit_serde {
     };
 }
 
-pub struct EditKind {
+pub struct ModifierKind {
     pub menu_label: &'static str,
-    pub make: fn() -> Box<dyn Edit>,
+    pub make: fn() -> Box<dyn Modifier>,
 }
 
-pub struct EditGroup {
+pub struct ModifierGroup {
     pub label: &'static str,
-    pub kinds: &'static [EditKind],
+    pub kinds: &'static [ModifierKind],
 }

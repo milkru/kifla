@@ -1,7 +1,7 @@
 use eframe::egui;
 use image::imageops;
 
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::widgets;
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
@@ -14,8 +14,8 @@ pub struct Crop {
     src_height: u32,
 }
 
-impl Edit for Crop {
-    crate::edit_serde!("crop");
+impl Modifier for Crop {
+    crate::modifier_serde!("crop");
 
     fn name(&self) -> &'static str {
         "Crop"

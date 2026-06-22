@@ -2,7 +2,7 @@ use eframe::egui;
 use image::RgbaImage;
 use rayon::prelude::*;
 
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -17,8 +17,8 @@ impl Default for Repeat {
     }
 }
 
-impl Edit for Repeat {
-    crate::edit_serde!("repeat");
+impl Modifier for Repeat {
+    crate::modifier_serde!("repeat");
 
     fn name(&self) -> &'static str {
         "Repeat"

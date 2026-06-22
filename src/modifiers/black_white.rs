@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::pixel::par_pixels;
 use crate::widgets;
 
@@ -23,8 +23,8 @@ impl Default for BlackWhite {
     }
 }
 
-impl Edit for BlackWhite {
-    crate::edit_serde!("black_white");
+impl Modifier for BlackWhite {
+    crate::modifier_serde!("black_white");
 
     fn name(&self) -> &'static str {
         "Black & White"

@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::pixel::map_rgb;
 use crate::widgets;
 
@@ -10,8 +10,8 @@ pub struct BrightnessContrast {
     contrast: f32,
 }
 
-impl Edit for BrightnessContrast {
-    crate::edit_serde!("brightness_contrast");
+impl Modifier for BrightnessContrast {
+    crate::modifier_serde!("brightness_contrast");
 
     fn name(&self) -> &'static str {
         "Brightness / Contrast"

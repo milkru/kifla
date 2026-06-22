@@ -1,7 +1,7 @@
 use eframe::egui;
 
 use crate::color;
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::pixel::par_pixels;
 use crate::widgets;
 
@@ -11,8 +11,8 @@ pub struct ShadowsHighlights {
     highlights: f32,
 }
 
-impl Edit for ShadowsHighlights {
-    crate::edit_serde!("shadows_highlights");
+impl Modifier for ShadowsHighlights {
+    crate::modifier_serde!("shadows_highlights");
 
     fn name(&self) -> &'static str {
         "Shadows / Highlights"

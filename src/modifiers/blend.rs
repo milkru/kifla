@@ -2,7 +2,7 @@ use eframe::egui;
 use image::RgbaImage;
 use rayon::prelude::*;
 
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -22,8 +22,8 @@ impl Default for Blend {
     }
 }
 
-impl Edit for Blend {
-    crate::edit_serde!("blend");
+impl Modifier for Blend {
+    crate::modifier_serde!("blend");
 
     fn name(&self) -> &'static str {
         "Blend"

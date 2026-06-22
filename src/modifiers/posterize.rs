@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::pixel::map_rgb;
 use crate::widgets;
 
@@ -15,8 +15,8 @@ impl Default for Posterize {
     }
 }
 
-impl Edit for Posterize {
-    crate::edit_serde!("posterize");
+impl Modifier for Posterize {
+    crate::modifier_serde!("posterize");
 
     fn name(&self) -> &'static str {
         "Posterize"

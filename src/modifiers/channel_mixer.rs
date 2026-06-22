@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::pixel::{par_pixels, to_u8};
 use crate::widgets;
 
@@ -30,8 +30,8 @@ fn output_ui(ui: &mut egui::Ui, title: &str, weights: &mut [f32; 3]) -> bool {
     changed
 }
 
-impl Edit for ChannelMixer {
-    crate::edit_serde!("channel_mixer");
+impl Modifier for ChannelMixer {
+    crate::modifier_serde!("channel_mixer");
 
     fn name(&self) -> &'static str {
         "Channel Mixer"

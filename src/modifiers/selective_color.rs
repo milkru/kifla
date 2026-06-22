@@ -1,7 +1,7 @@
 use eframe::egui;
 
 use crate::color;
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::pixel::{par_pixels, to_u8};
 use crate::widgets;
 
@@ -75,8 +75,8 @@ pub struct SelectiveColor {
     black: f32,
 }
 
-impl Edit for SelectiveColor {
-    crate::edit_serde!("selective_color");
+impl Modifier for SelectiveColor {
+    crate::modifier_serde!("selective_color");
 
     fn name(&self) -> &'static str {
         "Selective Color"

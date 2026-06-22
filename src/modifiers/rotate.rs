@@ -1,7 +1,7 @@
 use eframe::egui;
 use image::imageops;
 
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::pixel::remap_wrap;
 use crate::widgets;
 
@@ -10,8 +10,8 @@ pub struct Rotate {
     angle: f32,
 }
 
-impl Edit for Rotate {
-    crate::edit_serde!("rotate");
+impl Modifier for Rotate {
+    crate::modifier_serde!("rotate");
 
     fn name(&self) -> &'static str {
         "Rotate"
@@ -40,8 +40,8 @@ impl Edit for Rotate {
 
 pub struct Rotate90Cw;
 
-impl Edit for Rotate90Cw {
-    crate::edit_id!("rotate_90_cw");
+impl Modifier for Rotate90Cw {
+    crate::modifier_id!("rotate_90_cw");
 
     fn name(&self) -> &'static str {
         "Rotate 90° CW"
@@ -54,8 +54,8 @@ impl Edit for Rotate90Cw {
 
 pub struct Rotate90Ccw;
 
-impl Edit for Rotate90Ccw {
-    crate::edit_id!("rotate_90_ccw");
+impl Modifier for Rotate90Ccw {
+    crate::modifier_id!("rotate_90_ccw");
 
     fn name(&self) -> &'static str {
         "Rotate 90° CCW"

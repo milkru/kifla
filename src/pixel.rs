@@ -46,7 +46,10 @@ pub fn sample_wrap(src: &[u8], x: f32, y: f32, w: u32, h: u32) -> [f32; 4] {
 /// Resamples `image` in place: each output pixel (ox, oy) is filled by
 /// bilinearly sampling the original at the source coordinate returned by
 /// `map`, wrapping around the edges so the result stays tileable.
-pub fn remap_wrap(image: &mut image::RgbaImage, map: impl Fn(f32, f32) -> (f32, f32) + Sync + Send) {
+pub fn remap_wrap(
+    image: &mut image::RgbaImage,
+    map: impl Fn(f32, f32) -> (f32, f32) + Sync + Send,
+) {
     let (w, h) = (image.width(), image.height());
     if w == 0 || h == 0 {
         return;

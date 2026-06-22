@@ -2,7 +2,7 @@ use eframe::egui;
 use image::RgbaImage;
 use rayon::prelude::*;
 
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::widgets;
 
 fn offset_wrap(image: &RgbaImage, ox: i64, oy: i64) -> RgbaImage {
@@ -43,8 +43,8 @@ pub struct Offset {
     height: u32,
 }
 
-impl Edit for Offset {
-    crate::edit_serde!("offset");
+impl Modifier for Offset {
+    crate::modifier_serde!("offset");
 
     fn name(&self) -> &'static str {
         "Offset"

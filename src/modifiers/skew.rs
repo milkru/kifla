@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::pixel::remap_wrap;
 use crate::widgets;
 
@@ -10,8 +10,8 @@ pub struct Skew {
     vertical: f32,
 }
 
-impl Edit for Skew {
-    crate::edit_serde!("skew");
+impl Modifier for Skew {
+    crate::modifier_serde!("skew");
 
     fn name(&self) -> &'static str {
         "Skew"

@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::pixel::par_pixels;
 use crate::widgets;
 
@@ -21,8 +21,8 @@ impl Default for Curves {
     }
 }
 
-impl Edit for Curves {
-    crate::edit_serde!("curves");
+impl Modifier for Curves {
+    crate::modifier_serde!("curves");
 
     fn name(&self) -> &'static str {
         "Curves"

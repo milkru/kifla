@@ -1,11 +1,11 @@
 use image::imageops;
 
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 
 pub struct FlipHorizontal;
 
-impl Edit for FlipHorizontal {
-    crate::edit_id!("flip_horizontal");
+impl Modifier for FlipHorizontal {
+    crate::modifier_id!("flip_horizontal");
 
     fn name(&self) -> &'static str {
         "Flip Horizontal"
@@ -18,8 +18,8 @@ impl Edit for FlipHorizontal {
 
 pub struct FlipVertical;
 
-impl Edit for FlipVertical {
-    crate::edit_id!("flip_vertical");
+impl Modifier for FlipVertical {
+    crate::modifier_id!("flip_vertical");
 
     fn name(&self) -> &'static str {
         "Flip Vertical"

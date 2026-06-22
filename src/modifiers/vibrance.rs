@@ -1,7 +1,7 @@
 use eframe::egui;
 
 use crate::color;
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::pixel::{par_pixels, to_u8};
 use crate::widgets;
 
@@ -11,8 +11,8 @@ pub struct Vibrance {
     saturation: f32,
 }
 
-impl Edit for Vibrance {
-    crate::edit_serde!("vibrance");
+impl Modifier for Vibrance {
+    crate::modifier_serde!("vibrance");
 
     fn name(&self) -> &'static str {
         "Vibrance"

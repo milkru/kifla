@@ -3,7 +3,7 @@ use image::{imageops, Rgba, RgbaImage};
 use rayon::prelude::*;
 
 use crate::color;
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::widgets;
 
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -59,8 +59,8 @@ impl Default for Resize {
     }
 }
 
-impl Edit for Resize {
-    crate::edit_serde!("resize");
+impl Modifier for Resize {
+    crate::modifier_serde!("resize");
 
     fn name(&self) -> &'static str {
         "Resize"

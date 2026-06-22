@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::pixel::map_rgb;
 use crate::widgets;
 
@@ -21,8 +21,8 @@ impl Default for Exposure {
     }
 }
 
-impl Edit for Exposure {
-    crate::edit_serde!("exposure");
+impl Modifier for Exposure {
+    crate::modifier_serde!("exposure");
 
     fn name(&self) -> &'static str {
         "Exposure"

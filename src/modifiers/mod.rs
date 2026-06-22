@@ -46,14 +46,14 @@ pub use skew::Skew;
 pub use threshold::Threshold;
 pub use vibrance::Vibrance;
 
-use crate::edit::{Edit, EditGroup, EditKind};
+use crate::modifier::{Modifier, ModifierGroup, ModifierKind};
 
-pub fn edit_from_json(id: &str, params: &serde_json::Value) -> Option<Box<dyn Edit>> {
+pub fn modifier_from_json(id: &str, params: &serde_json::Value) -> Option<Box<dyn Modifier>> {
     macro_rules! de {
         ($t:ty) => {
             serde_json::from_value::<$t>(params.clone())
                 .ok()
-                .map(|o| Box::new(o) as Box<dyn Edit>)
+                .map(|o| Box::new(o) as Box<dyn Modifier>)
         };
     }
     match id {
@@ -87,149 +87,149 @@ pub fn edit_from_json(id: &str, params: &serde_json::Value) -> Option<Box<dyn Ed
     }
 }
 
-// Edits offered in the "Image" menu (color and tone adjustments).
-pub static IMAGE_GROUPS: &[EditGroup] = &[
-    EditGroup {
+// Modifiers offered in the "Image" menu (color and tone adjustments).
+pub static IMAGE_GROUPS: &[ModifierGroup] = &[
+    ModifierGroup {
         label: "Tone",
         kinds: &[
-            EditKind {
+            ModifierKind {
                 menu_label: "☀ Brightness / Contrast…",
                 make: || Box::new(BrightnessContrast::default()),
             },
-            EditKind {
+            ModifierKind {
                 menu_label: "📊 Levels…",
                 make: || Box::new(Levels::default()),
             },
-            EditKind {
+            ModifierKind {
                 menu_label: "📈 Curves…",
                 make: || Box::new(Curves::default()),
             },
-            EditKind {
+            ModifierKind {
                 menu_label: "🔆 Exposure…",
                 make: || Box::new(Exposure::default()),
             },
         ],
     },
-    EditGroup {
+    ModifierGroup {
         label: "Color",
         kinds: &[
-            EditKind {
+            ModifierKind {
                 menu_label: "🎨 Hue / Saturation…",
                 make: || Box::new(HueSaturation::default()),
             },
-            EditKind {
+            ModifierKind {
                 menu_label: "🌈 Vibrance…",
                 make: || Box::new(Vibrance::default()),
             },
-            EditKind {
+            ModifierKind {
                 menu_label: "⚖ Color Balance…",
                 make: || Box::new(ColorBalance::default()),
             },
-            EditKind {
+            ModifierKind {
                 menu_label: "🌓 Black & White…",
                 make: || Box::new(BlackWhite::default()),
             },
-            EditKind {
+            ModifierKind {
                 menu_label: "🎛 Channel Mixer…",
                 make: || Box::new(ChannelMixer::default()),
             },
         ],
     },
-    EditGroup {
+    ModifierGroup {
         label: "Stylize",
         kinds: &[
-            EditKind {
+            ModifierKind {
                 menu_label: "🎚 Posterize…",
                 make: || Box::new(Posterize::default()),
             },
-            EditKind {
+            ModifierKind {
                 menu_label: "🔲 Threshold…",
                 make: || Box::new(Threshold::default()),
             },
-            EditKind {
+            ModifierKind {
                 menu_label: "🎯 Selective Color…",
                 make: || Box::new(SelectiveColor::default()),
             },
-            EditKind {
+            ModifierKind {
                 menu_label: "🗂 Indexed Color…",
                 make: || Box::new(IndexedColor::default()),
             },
-            EditKind {
+            ModifierKind {
                 menu_label: "🔄 Invert",
                 make: || Box::new(Invert),
             },
         ],
     },
-    EditGroup {
+    ModifierGroup {
         label: "Light",
-        kinds: &[EditKind {
+        kinds: &[ModifierKind {
             menu_label: "🌗 Shadows / Highlights…",
             make: || Box::new(ShadowsHighlights::default()),
         }],
     },
 ];
 
-// Edits offered in the "Transform" menu (geometry and tiling).
-pub static TRANSFORM_GROUPS: &[EditGroup] = &[
-    EditGroup {
+// Modifiers offered in the "Transform" menu (geometry and tiling).
+pub static TRANSFORM_GROUPS: &[ModifierGroup] = &[
+    ModifierGroup {
         label: "Flip",
         kinds: &[
-            EditKind {
+            ModifierKind {
                 menu_label: "🔁 Flip Horizontal",
                 make: || Box::new(FlipHorizontal),
             },
-            EditKind {
+            ModifierKind {
                 menu_label: "🔃 Flip Vertical",
                 make: || Box::new(FlipVertical),
             },
         ],
     },
-    EditGroup {
+    ModifierGroup {
         label: "Rotate",
         kinds: &[
-            EditKind {
+            ModifierKind {
                 menu_label: "🔄 Rotate 90° CW",
                 make: || Box::new(Rotate90Cw),
             },
-            EditKind {
+            ModifierKind {
                 menu_label: "🔄 Rotate 90° CCW",
                 make: || Box::new(Rotate90Ccw),
             },
         ],
     },
-    EditGroup {
+    ModifierGroup {
         label: "Tiling",
         kinds: &[
-            EditKind {
+            ModifierKind {
                 menu_label: "🔀 Offset…",
                 make: || Box::new(Offset::default()),
             },
-            EditKind {
+            ModifierKind {
                 menu_label: "🧱 Repeat…",
                 make: || Box::new(Repeat::default()),
             },
-            EditKind {
+            ModifierKind {
                 menu_label: "🌫 Blend…",
                 make: || Box::new(Blend::default()),
             },
-            EditKind {
+            ModifierKind {
                 menu_label: "🌀 Rotate…",
                 make: || Box::new(Rotate::default()),
             },
-            EditKind {
+            ModifierKind {
                 menu_label: "🔺 Skew…",
                 make: || Box::new(Skew::default()),
             },
         ],
     },
-    EditGroup {
+    ModifierGroup {
         label: "Size",
         kinds: &[
-            EditKind {
+            ModifierKind {
                 menu_label: "📐 Resize…",
                 make: || Box::new(Resize::default()),
             },
-            EditKind {
+            ModifierKind {
                 menu_label: "✂ Crop…",
                 make: || Box::new(Crop::default()),
             },

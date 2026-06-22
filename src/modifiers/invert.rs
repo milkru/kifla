@@ -1,10 +1,10 @@
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::pixel::par_pixels;
 
 pub struct Invert;
 
-impl Edit for Invert {
-    crate::edit_id!("invert");
+impl Modifier for Invert {
+    crate::modifier_id!("invert");
 
     fn name(&self) -> &'static str {
         "Invert"

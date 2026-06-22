@@ -2,7 +2,7 @@ use color_quant::NeuQuant;
 use eframe::egui;
 use image::{Rgba, RgbaImage};
 
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::pixel::par_pixels;
 use crate::widgets;
 
@@ -23,8 +23,8 @@ impl Default for IndexedColor {
     }
 }
 
-impl Edit for IndexedColor {
-    crate::edit_serde!("indexed_color");
+impl Modifier for IndexedColor {
+    crate::modifier_serde!("indexed_color");
 
     fn name(&self) -> &'static str {
         "Indexed Color"

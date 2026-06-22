@@ -1,7 +1,7 @@
 use eframe::egui;
 
 use crate::color;
-use crate::edit::Edit;
+use crate::modifier::Modifier;
 use crate::pixel::{par_pixels, to_u8};
 use crate::widgets;
 
@@ -12,8 +12,8 @@ pub struct HueSaturation {
     lightness: f32,
 }
 
-impl Edit for HueSaturation {
-    crate::edit_serde!("hue_saturation");
+impl Modifier for HueSaturation {
+    crate::modifier_serde!("hue_saturation");
 
     fn name(&self) -> &'static str {
         "Hue / Saturation"
