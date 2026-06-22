@@ -310,6 +310,7 @@ pub struct KiflaApp {
     zoom: f32,
     pan: egui::Vec2,
     fit: bool,
+    fit_scale: f32,
     view: Option<(egui::Rect, egui::Pos2)>,
     dragging: Option<usize>,
     drag_grab: f32,
@@ -403,6 +404,7 @@ impl KiflaApp {
                 self.path = Some(path);
                 self.error = None;
                 self.fit = true;
+                self.fit_scale = 0.8;
                 self.unsaved = false;
                 self.saved_stack = self.stack_entries();
                 self.refresh_title(ctx);
@@ -982,6 +984,7 @@ impl eframe::App for KiflaApp {
 
         if fit_requested {
             self.fit = true;
+            self.fit_scale = 1.0;
         }
         let comparing = compare_held && self.original_texture.is_some();
 
@@ -1378,7 +1381,8 @@ impl eframe::App for KiflaApp {
                 let tex_size = texture.size_vec2();
 
                 if self.fit {
-                    self.zoom = (rect.width() / tex_size.x).min(rect.height() / tex_size.y);
+                    let fit = (rect.width() / tex_size.x).min(rect.height() / tex_size.y);
+                    self.zoom = fit * self.fit_scale;
                     self.pan = egui::Vec2::ZERO;
                 }
 
