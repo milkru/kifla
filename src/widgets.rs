@@ -12,15 +12,27 @@ pub fn drag_value<Num: egui::emath::Numeric>(
     fine_tune(ui, &response, value, range)
 }
 
-/// Adds Ctrl+scroll fine-tuning to an already-added `DragValue` response.
-/// While Ctrl is held, scrolling nudges the value live without committing;
-/// the commit (which triggers a re-render) fires once Ctrl is released.
-/// Returns true when the value should be committed.
+/// Adds Ctrl+scroll fine-tuning to an already-added widget response, nudging
+/// the value by ±1 per notch. See [`fine_tune_step`] for a custom step.
 pub fn fine_tune<Num: egui::emath::Numeric>(
     ui: &egui::Ui,
     response: &egui::Response,
     value: &mut Num,
     range: std::ops::RangeInclusive<Num>,
+) -> bool {
+    fine_tune_step(ui, response, value, range, 1.0)
+}
+
+/// Adds Ctrl+scroll fine-tuning to an already-added widget response, nudging
+/// the value by `step` per notch. While Ctrl is held, scrolling nudges the
+/// value live without committing; the commit (which triggers a re-render)
+/// fires once Ctrl is released. Returns true when the value should commit.
+pub fn fine_tune_step<Num: egui::emath::Numeric>(
+    ui: &egui::Ui,
+    response: &egui::Response,
+    value: &mut Num,
+    range: std::ops::RangeInclusive<Num>,
+    step: f64,
 ) -> bool {
     let pending_id = response.id.with("ctrl_scroll_pending");
 
@@ -35,7 +47,7 @@ pub fn fine_tune<Num: egui::emath::Numeric>(
         });
         if let Some(dy) = dy {
             if dy != 0.0 {
-                let v = (value.to_f64() + dy.signum() as f64)
+                let v = (value.to_f64() + dy.signum() as f64 * step)
                     .clamp(range.start().to_f64(), range.end().to_f64());
                 *value = Num::from_f64(v);
                 ui.data_mut(|d| d.insert_temp(pending_id, true));
@@ -70,8 +82,10 @@ pub fn slider(
         ui.style_mut()
             .text_styles
             .insert(egui::TextStyle::Body, egui::FontId::proportional(1.0));
-        let response = ui.add(egui::Slider::new(value, range).show_value(false));
+        let step = (range.end() - range.start()) as f64 * 0.01;
+        let response = ui.add(egui::Slider::new(value, range.clone()).show_value(false));
         commit = response.changed();
+        commit |= fine_tune_step(ui, &response, value, range, step);
     });
     commit
 }
