@@ -4,7 +4,6 @@ A small desktop app, written in Rust, for tinkering with textures, with a soft s
 
 Open an image (or drop one in), stack up some modifiers, watch the preview update live, and save the result. It does general image adjustments and transforms, and it's especially handy for tiling work: dedicated offset, blend and repeat tools plus a tile preview make it easy to turn a photo into a clean, seamlessly repeating texture. Everything is nondestructive; each modifier is replayed from the original, so you can tweak, toggle, or remove any of them at any time. Hold the compare key (Tab) to peek at the original, and the preview has pan/zoom, recenter, rulers and a cursor readout.
 
-![Example](https://github.com/milkru/data_resources/blob/main/kifla_intro.png "Example Intro")
 ![Example](https://github.com/milkru/data_resources/blob/main/kifla_work.png "Example Work")
 
 ## What it does
