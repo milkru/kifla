@@ -167,6 +167,17 @@ impl GpuPass {
     }
 }
 
+/// One modifier's GPU work: either a sequence of fragment passes, or the
+/// indexed-color compute step (k-means palette + nearest match + dither).
+pub enum GpuStep {
+    Fragment(Vec<GpuPass>),
+    IndexColor {
+        colors: u32,
+        dither: bool,
+        amount: f32,
+    },
+}
+
 /// Pack `f32` params into uniform-buffer bytes, padding to a multiple of four
 /// so each group lands on a 16-byte (vec4) boundary as WGSL `uniform` requires.
 /// Shaders read them as `array<vec4<f32>, N>` (see binding 2).
@@ -185,6 +196,7 @@ pub struct GpuContext {
     layout: wgpu::BindGroupLayout,
     pipeline_layout: wgpu::PipelineLayout,
     pipelines: Mutex<HashMap<&'static str, Arc<wgpu::RenderPipeline>>>,
+    kmeans: Mutex<Option<Arc<Kmeans>>>,
 }
 
 impl GpuContext {
@@ -251,6 +263,7 @@ impl GpuContext {
             layout,
             pipeline_layout,
             pipelines: Mutex::new(HashMap::new()),
+            kmeans: Mutex::new(None),
         }
     }
 
@@ -311,17 +324,18 @@ impl GpuContext {
             format: TEX_FORMAT,
             usage: wgpu::TextureUsages::TEXTURE_BINDING
                 | wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::STORAGE_BINDING
                 | wgpu::TextureUsages::COPY_SRC
                 | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         })
     }
 
-    /// Run the modifier chain (one `Vec<GpuPass>` group per enabled modifier) on
-    /// `input` and read the result back to an image. Within a group, each pass's
-    /// input is bound at binding 0 and the group's first input at binding 3, so
-    /// multi-pass modifiers can combine the original with intermediates.
-    pub fn apply(&self, input: &image::RgbaImage, groups: &[Vec<GpuPass>]) -> image::RgbaImage {
+    /// Run the modifier chain (one [`GpuStep`] per enabled modifier) on `input`
+    /// and read the result back to an image. Fragment groups are batched into one
+    /// encoder; an Indexed Color step flushes the encoder (its compute submits
+    /// must see prior results), runs, then a fresh encoder resumes.
+    pub fn apply(&self, input: &image::RgbaImage, steps: &[GpuStep]) -> image::RgbaImage {
         use wgpu::util::DeviceExt;
 
         // All textures live in a pool so views stay valid until submission; we
@@ -351,90 +365,120 @@ impl GpuContext {
             },
         );
 
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("kifla.enc") });
-
+        let mut encoder: Option<wgpu::CommandEncoder> = None;
         let mut cur = 0usize;
-        for group in groups {
-            let group_in = cur;
-            for pass in group {
-                let (w, h) = dims[cur];
-                let (ow, oh) = match pass.out_size {
-                    OutSize::Same => (w, h),
-                    OutSize::Swap => (h, w),
-                    OutSize::Half => (w.div_ceil(2).max(1), h.div_ceil(2).max(1)),
-                    OutSize::Source => dims[group_in],
-                    OutSize::Fixed(fw, fh) => (fw.max(1), fh.max(1)),
-                };
-                pool.push(self.make_texture(ow, oh));
-                dims.push((ow, oh));
-                let tgt = pool.len() - 1;
-                let pipeline = self.pipeline(pass);
+        for step in steps {
+            match step {
+                GpuStep::Fragment(group) => {
+                    let enc = encoder.get_or_insert_with(|| {
+                        self.device.create_command_encoder(
+                            &wgpu::CommandEncoderDescriptor { label: Some("kifla.enc") },
+                        )
+                    });
+                    let group_in = cur;
+                    for pass in group {
+                        let (w, h) = dims[cur];
+                        let (ow, oh) = match pass.out_size {
+                            OutSize::Same => (w, h),
+                            OutSize::Swap => (h, w),
+                            OutSize::Half => (w.div_ceil(2).max(1), h.div_ceil(2).max(1)),
+                            OutSize::Source => dims[group_in],
+                            OutSize::Fixed(fw, fh) => (fw.max(1), fh.max(1)),
+                        };
+                        pool.push(self.make_texture(ow, oh));
+                        dims.push((ow, oh));
+                        let tgt = pool.len() - 1;
+                        let pipeline = self.pipeline(pass);
 
-                let bytes: &[u8] = if pass.uniforms.is_empty() {
-                    &[0u8; 16]
-                } else {
-                    &pass.uniforms
-                };
-                let ubuf =
-                    self.device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("kifla.uniforms"),
-                            contents: bytes,
-                            usage: wgpu::BufferUsages::UNIFORM,
+                        let bytes: &[u8] = if pass.uniforms.is_empty() {
+                            &[0u8; 16]
+                        } else {
+                            &pass.uniforms
+                        };
+                        let ubuf = self.device.create_buffer_init(
+                            &wgpu::util::BufferInitDescriptor {
+                                label: Some("kifla.uniforms"),
+                                contents: bytes,
+                                usage: wgpu::BufferUsages::UNIFORM,
+                            },
+                        );
+
+                        let in_view =
+                            pool[cur].create_view(&wgpu::TextureViewDescriptor::default());
+                        let src_view =
+                            pool[group_in].create_view(&wgpu::TextureViewDescriptor::default());
+                        let out_view =
+                            pool[tgt].create_view(&wgpu::TextureViewDescriptor::default());
+                        let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                            label: Some("kifla.bind"),
+                            layout: &self.layout,
+                            entries: &[
+                                wgpu::BindGroupEntry {
+                                    binding: 0,
+                                    resource: wgpu::BindingResource::TextureView(&in_view),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 1,
+                                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 2,
+                                    resource: ubuf.as_entire_binding(),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 3,
+                                    resource: wgpu::BindingResource::TextureView(&src_view),
+                                },
+                            ],
                         });
 
-                let in_view = pool[cur].create_view(&wgpu::TextureViewDescriptor::default());
-                let src_view = pool[group_in].create_view(&wgpu::TextureViewDescriptor::default());
-                let out_view = pool[tgt].create_view(&wgpu::TextureViewDescriptor::default());
-                let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("kifla.bind"),
-                    layout: &self.layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::TextureView(&in_view),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::Sampler(&self.sampler),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: ubuf.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 3,
-                            resource: wgpu::BindingResource::TextureView(&src_view),
-                        },
-                    ],
-                });
+                        {
+                            let mut rp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                                label: Some("kifla.pass"),
+                                color_attachments: &[Some(
+                                    wgpu::RenderPassColorAttachment {
+                                        view: &out_view,
+                                        resolve_target: None,
+                                        ops: wgpu::Operations {
+                                            load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                                            store: wgpu::StoreOp::Store,
+                                        },
+                                    },
+                                )],
+                                depth_stencil_attachment: None,
+                                timestamp_writes: None,
+                                occlusion_query_set: None,
+                            });
+                            rp.set_pipeline(&pipeline);
+                            rp.set_bind_group(0, &bind, &[]);
+                            rp.draw(0..3, 0..1);
+                        }
 
-                {
-                    let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("kifla.pass"),
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &out_view,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                                store: wgpu::StoreOp::Store,
-                            },
-                        })],
-                        depth_stencil_attachment: None,
-                        timestamp_writes: None,
-                        occlusion_query_set: None,
-                    });
-                    rp.set_pipeline(&pipeline);
-                    rp.set_bind_group(0, &bind, &[]);
-                    rp.draw(0..3, 0..1);
+                        cur = tgt;
+                    }
                 }
-
-                cur = tgt;
+                GpuStep::IndexColor {
+                    colors,
+                    dither,
+                    amount,
+                } => {
+                    // Flush queued fragment work so the compute step reads it.
+                    if let Some(enc) = encoder.take() {
+                        self.queue.submit(Some(enc.finish()));
+                    }
+                    let (w, h) = dims[cur];
+                    let out = self.index_color(&pool[cur], w, h, *colors, *dither, *amount);
+                    pool.push(out);
+                    dims.push((w, h));
+                    cur = pool.len() - 1;
+                }
             }
         }
 
+        let mut encoder = encoder.unwrap_or_else(|| {
+            self.device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("kifla.enc") })
+        });
         let current = &pool[cur];
         let (w, h) = dims[cur];
 
@@ -483,4 +527,369 @@ impl GpuContext {
         }
         out
     }
+
+    fn kmeans(&self) -> Arc<Kmeans> {
+        let mut guard = self.kmeans.lock().unwrap();
+        guard
+            .get_or_insert_with(|| Arc::new(Kmeans::new(&self.device, &self.queue)))
+            .clone()
+    }
+
+    /// Quantize `input` to `colors` adaptive colors via GPU k-means (a few
+    /// iterations), then map each pixel to its nearest palette entry, optionally
+    /// with ordered (Bayer) dithering. Returns the quantized texture.
+    fn index_color(
+        &self,
+        input: &wgpu::Texture,
+        w: u32,
+        h: u32,
+        colors: u32,
+        dither: bool,
+        amount: f32,
+    ) -> wgpu::Texture {
+        use wgpu::util::DeviceExt;
+
+        let n = colors.clamp(2, 256);
+        let npix = w * h;
+        let km = self.kmeans();
+        let output = self.make_texture(w, h);
+
+        let centroids = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("kmeans.centroids"),
+            size: 256 * 16,
+            usage: wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
+        let accum = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("kmeans.accum"),
+            size: 256 * 4 * 4,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let in_view = input.create_view(&wgpu::TextureViewDescriptor::default());
+        let out_view = output.create_view(&wgpu::TextureViewDescriptor::default());
+        let noise_view = km.blue_noise.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let params = |dither: u32| -> wgpu::Buffer {
+            // std140-ish: u32 n, npix, w, dither, f32 amount, + pad to 16-byte.
+            let mut bytes = Vec::new();
+            bytes.extend_from_slice(&n.to_le_bytes());
+            bytes.extend_from_slice(&npix.to_le_bytes());
+            bytes.extend_from_slice(&w.to_le_bytes());
+            bytes.extend_from_slice(&dither.to_le_bytes());
+            bytes.extend_from_slice(&amount.to_le_bytes());
+            bytes.extend_from_slice(&[0u8; 12]);
+            self.device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("kmeans.params"),
+                    contents: &bytes,
+                    usage: wgpu::BufferUsages::UNIFORM,
+                })
+        };
+
+        let make_bind = |params: &wgpu::Buffer| {
+            self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("kmeans.bind"),
+                layout: &km.layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&in_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: centroids.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: accum.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: params.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::TextureView(&out_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: wgpu::BindingResource::TextureView(&noise_view),
+                    },
+                ],
+            })
+        };
+
+        let groups_pix = npix.div_ceil(256);
+        let groups_n = n.div_ceil(256).max(1);
+
+        // Init centroids from spread-out source pixels.
+        let p_init = params(0);
+        let bind_init = make_bind(&p_init);
+        let mut enc = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("kmeans.init") });
+        {
+            let mut cp = enc.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+            cp.set_pipeline(&km.init);
+            cp.set_bind_group(0, &bind_init, &[]);
+            cp.dispatch_workgroups(groups_n, 1, 1);
+        }
+        self.queue.submit(Some(enc.finish()));
+
+        // Lloyd iterations: clear accumulators, assign+accumulate, recompute.
+        for _ in 0..8 {
+            self.queue.write_buffer(&accum, 0, &[0u8; 256 * 4 * 4]);
+            let p = params(0);
+            let bind = make_bind(&p);
+            let mut enc = self.device.create_command_encoder(
+                &wgpu::CommandEncoderDescriptor { label: Some("kmeans.iter") },
+            );
+            {
+                let mut cp = enc.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+                cp.set_pipeline(&km.assign);
+                cp.set_bind_group(0, &bind, &[]);
+                cp.dispatch_workgroups(groups_pix, 1, 1);
+                cp.set_pipeline(&km.update);
+                cp.set_bind_group(0, &bind, &[]);
+                cp.dispatch_workgroups(groups_n, 1, 1);
+            }
+            self.queue.submit(Some(enc.finish()));
+        }
+
+        // Final map (+ optional Bayer dither) into the output texture.
+        let p_map = params(if dither { 1 } else { 0 });
+        let bind_map = make_bind(&p_map);
+        let mut enc = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("kmeans.map") });
+        {
+            let mut cp = enc.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+            cp.set_pipeline(&km.map);
+            cp.set_bind_group(0, &bind_map, &[]);
+            cp.dispatch_workgroups(groups_pix, 1, 1);
+        }
+        self.queue.submit(Some(enc.finish()));
+
+        output
+    }
 }
+
+/// Compute pipelines for GPU k-means colour quantization.
+struct Kmeans {
+    layout: wgpu::BindGroupLayout,
+    init: wgpu::ComputePipeline,
+    assign: wgpu::ComputePipeline,
+    update: wgpu::ComputePipeline,
+    map: wgpu::ComputePipeline,
+    blue_noise: wgpu::Texture,
+}
+
+const BLUE_NOISE_SIZE: u32 = 64;
+
+impl Kmeans {
+    fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+        // Precompute a blue-noise tile for high-quality ordered dithering.
+        let tile = crate::bluenoise::generate(BLUE_NOISE_SIZE as usize);
+        let blue_noise = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("kmeans.bluenoise"),
+            size: wgpu::Extent3d {
+                width: BLUE_NOISE_SIZE,
+                height: BLUE_NOISE_SIZE,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::R8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &blue_noise,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &tile,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(BLUE_NOISE_SIZE),
+                rows_per_image: Some(BLUE_NOISE_SIZE),
+            },
+            wgpu::Extent3d {
+                width: BLUE_NOISE_SIZE,
+                height: BLUE_NOISE_SIZE,
+                depth_or_array_layers: 1,
+            },
+        );
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("kmeans.bgl"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::StorageTexture {
+                        access: wgpu::StorageTextureAccess::WriteOnly,
+                        format: TEX_FORMAT,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+            ],
+        });
+        let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("kmeans.pl"),
+            bind_group_layouts: &[&layout],
+            push_constant_ranges: &[],
+        });
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("kmeans"),
+            source: wgpu::ShaderSource::Wgsl(KMEANS_SHADER.into()),
+        });
+        let mk = |entry: &str| {
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some(entry),
+                layout: Some(&pl),
+                module: &module,
+                entry_point: entry,
+            })
+        };
+        Self {
+            init: mk("init"),
+            assign: mk("assign"),
+            update: mk("update"),
+            map: mk("map"),
+            layout,
+            blue_noise,
+        }
+    }
+}
+
+const KMEANS_SHADER: &str = r#"
+@group(0) @binding(0) var tex: texture_2d<f32>;
+@group(0) @binding(1) var<storage, read_write> centroids: array<vec4<f32>, 256>;
+@group(0) @binding(2) var<storage, read_write> accum: array<atomic<u32>, 1024>;
+struct Params { n: u32, npix: u32, w: u32, dither: u32, amount: f32 };
+@group(0) @binding(3) var<uniform> params: Params;
+@group(0) @binding(4) var out_tex: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(5) var bluenoise: texture_2d<f32>;
+
+fn coord_of(i: u32) -> vec2<i32> {
+    return vec2<i32>(i32(i % params.w), i32(i / params.w));
+}
+
+fn nearest(c: vec3<f32>) -> u32 {
+    var best = 0u;
+    var best_d = 1e9;
+    for (var i = 0u; i < params.n; i = i + 1u) {
+        let d = distance(c, centroids[i].rgb);
+        if (d < best_d) { best_d = d; best = i; }
+    }
+    return best;
+}
+
+@compute @workgroup_size(256)
+fn init(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x;
+    if (i >= params.n) { return; }
+    // Spread initial centroids across the image.
+    let pidx = (i * params.npix) / params.n;
+    let c = textureLoad(tex, coord_of(pidx), 0);
+    centroids[i] = vec4<f32>(c.rgb, 1.0);
+}
+
+@compute @workgroup_size(256)
+fn assign(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x;
+    if (i >= params.npix) { return; }
+    let c = textureLoad(tex, coord_of(i), 0).rgb;
+    let k = nearest(c);
+    atomicAdd(&accum[k * 4u + 0u], u32(round(c.r * 255.0)));
+    atomicAdd(&accum[k * 4u + 1u], u32(round(c.g * 255.0)));
+    atomicAdd(&accum[k * 4u + 2u], u32(round(c.b * 255.0)));
+    atomicAdd(&accum[k * 4u + 3u], 1u);
+}
+
+@compute @workgroup_size(256)
+fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x;
+    if (i >= params.n) { return; }
+    let cnt = atomicLoad(&accum[i * 4u + 3u]);
+    if (cnt > 0u) {
+        let r = f32(atomicLoad(&accum[i * 4u + 0u])) / f32(cnt) / 255.0;
+        let g = f32(atomicLoad(&accum[i * 4u + 1u])) / f32(cnt) / 255.0;
+        let b = f32(atomicLoad(&accum[i * 4u + 2u])) / f32(cnt) / 255.0;
+        centroids[i] = vec4<f32>(r, g, b, 1.0);
+    }
+}
+
+@compute @workgroup_size(256)
+fn map(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x;
+    if (i >= params.npix) { return; }
+    let coord = coord_of(i);
+    let src = textureLoad(tex, coord, 0);
+    var c = src.rgb;
+    if (params.dither == 1u) {
+        // Tiled blue-noise threshold (organic, grid-free, well dispersed).
+        let bn = textureLoad(bluenoise, vec2<i32>(coord.x & 63, coord.y & 63), 0).r;
+        let t = bn - 0.5;
+        c = clamp(c + vec3<f32>(t * params.amount * 0.5), vec3<f32>(0.0), vec3<f32>(1.0));
+    }
+    let k = nearest(c);
+    textureStore(out_tex, coord, vec4<f32>(centroids[k].rgb, src.a));
+}
+"#;

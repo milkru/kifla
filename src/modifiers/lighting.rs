@@ -31,11 +31,11 @@ impl Modifier for Lighting {
     }
 
     fn settings_ui(&mut self, ui: &mut egui::Ui) -> bool {
-        widgets::slider(ui, "Amount", &mut self.amount, 0.0..=1.0)
+        widgets::slider(ui, "Amount", &mut self.amount, 0.0..=2.0)
     }
 
     fn apply(&self, image: &mut image::RgbaImage) {
-        let amount = self.amount.clamp(0.0, 1.0);
+        let amount = self.amount.clamp(0.0, 2.0);
         if amount <= 0.0 {
             return;
         }

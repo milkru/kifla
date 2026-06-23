@@ -456,13 +456,13 @@ impl KiflaApp {
     fn try_gpu_apply(&self) -> Option<image::RgbaImage> {
         let gpu = self.gpu.as_ref()?;
         let original = self.original.as_ref()?;
-        let mut groups = Vec::new();
+        let mut steps = Vec::new();
         for entry in &self.modifiers {
             if entry.enabled {
-                groups.push(entry.modifier.gpu_passes()?);
+                steps.push(entry.modifier.gpu_step()?);
             }
         }
-        Some(gpu.apply(original, &groups))
+        Some(gpu.apply(original, &steps))
     }
 
     /// Apply the stack synchronously and upload the result. Used for one-shot

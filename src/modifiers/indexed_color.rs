@@ -79,6 +79,20 @@ impl Modifier for IndexedColor {
             });
         }
     }
+
+    fn gpu_step(&self) -> Option<crate::gpu::GpuStep> {
+        let n = self.colors.clamp(2, 256);
+        // Matches apply()'s no-op: a full 256-colour palette with no dithering
+        // leaves the image unchanged.
+        if n >= 256 && !self.dither {
+            return Some(crate::gpu::GpuStep::Fragment(Vec::new()));
+        }
+        Some(crate::gpu::GpuStep::IndexColor {
+            colors: n,
+            dither: self.dither,
+            amount: self.amount,
+        })
+    }
 }
 
 fn dither_floyd_steinberg(image: &mut RgbaImage, nq: &NeuQuant, palette: &[u8], amount: f32) {

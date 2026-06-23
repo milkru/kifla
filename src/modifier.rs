@@ -32,6 +32,13 @@ pub trait Modifier {
         self.gpu_pass().map(|p| vec![p])
     }
 
+    /// The modifier's GPU work as a [`GpuStep`]. Defaults to wrapping
+    /// [`gpu_passes`](Modifier::gpu_passes); modifiers needing compute (e.g.
+    /// indexed color) override this directly.
+    fn gpu_step(&self) -> Option<crate::gpu::GpuStep> {
+        self.gpu_passes().map(crate::gpu::GpuStep::Fragment)
+    }
+
     fn has_settings(&self) -> bool {
         false
     }
