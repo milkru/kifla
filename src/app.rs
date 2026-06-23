@@ -317,6 +317,7 @@ pub struct KiflaApp {
     recenter: bool,
     recenter_scale: f32,
     view: Option<(egui::Rect, egui::Pos2)>,
+    measure_start: Option<egui::Pos2>,
     dragging: Option<usize>,
     drag_grab: f32,
     reordered: bool,
@@ -1440,7 +1441,10 @@ impl eframe::App for KiflaApp {
                     self.pan = egui::Vec2::ZERO;
                 }
 
-                if response.dragged() {
+                let ctrl = ui.input(|i| i.modifiers.ctrl);
+
+                // Ctrl+drag measures distance instead of panning.
+                if response.dragged() && !ctrl {
                     self.pan += response.drag_delta();
                     self.recenter = false;
                 }
@@ -1459,7 +1463,9 @@ impl eframe::App for KiflaApp {
                     }
                 }
 
-                if response.dragged() {
+                if ctrl && (response.hovered() || response.dragged()) {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+                } else if response.dragged() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                 } else if response.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
@@ -1517,6 +1523,40 @@ impl eframe::App for KiflaApp {
                         ],
                         guide,
                     );
+                }
+
+                // Measure tool: while Ctrl+dragging, draw a line from the press
+                // point to the cursor and show the distance in image pixels.
+                let zoom = self.zoom;
+                let origin = image_rect.min;
+                let to_image = |p: egui::Pos2| ((p - origin) / zoom).to_pos2();
+                if response.drag_started() && ctrl {
+                    self.measure_start = response.interact_pointer_pos().map(to_image);
+                }
+                if !(ctrl && response.dragged()) {
+                    self.measure_start = None;
+                }
+                if let (Some(start_img), Some(end)) =
+                    (self.measure_start, response.interact_pointer_pos())
+                {
+                    let painter = ui.painter_at(rect);
+                    let color = egui::Color32::WHITE;
+                    let start = origin + start_img.to_vec2() * zoom;
+                    painter.line_segment([start, end], egui::Stroke::new(1.5, color));
+                    painter.circle_filled(start, 2.5, color);
+                    painter.circle_filled(end, 2.5, color);
+                    let dist = (to_image(end) - start_img).length();
+                    let text = format!("{dist:.1} px");
+                    let pos = end + egui::vec2(12.0, 0.0);
+                    let font = egui::FontId::proportional(13.0);
+                    painter.text(
+                        pos + egui::vec2(1.0, 1.0),
+                        egui::Align2::LEFT_CENTER,
+                        &text,
+                        font.clone(),
+                        egui::Color32::BLACK,
+                    );
+                    painter.text(pos, egui::Align2::LEFT_CENTER, &text, font, color);
                 }
 
                 draw_rulers(ui, full, rect, image_rect.min, self.zoom);
