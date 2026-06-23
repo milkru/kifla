@@ -3,6 +3,7 @@ mod blend;
 mod brightness_contrast;
 mod channel_mixer;
 mod color_balance;
+mod color_normalization;
 mod crop;
 mod curves;
 mod exposure;
@@ -28,6 +29,7 @@ pub use blend::Blend;
 pub use brightness_contrast::BrightnessContrast;
 pub use channel_mixer::ChannelMixer;
 pub use color_balance::ColorBalance;
+pub use color_normalization::ColorNormalization;
 pub use crop::Crop;
 pub use curves::Curves;
 pub use exposure::Exposure;
@@ -74,6 +76,7 @@ pub fn modifier_from_json(id: &str, params: &serde_json::Value) -> Option<Box<dy
         "indexed_color" => de!(IndexedColor),
         "shadows_highlights" => de!(ShadowsHighlights),
         "lighting" => de!(Lighting),
+        "color_normalization" => de!(ColorNormalization),
         "offset" => de!(Offset),
         "repeat" => de!(Repeat),
         "blend" | "make_seamless" => de!(Blend),
@@ -185,6 +188,10 @@ pub static IMAGE_GROUPS: &[ModifierGroup] = &[
             ModifierKind {
                 menu_label: "💡 Lighting Normalization…",
                 make: || Box::new(Lighting::default()),
+            },
+            ModifierKind {
+                menu_label: "🌡 Color Normalization…",
+                make: || Box::new(ColorNormalization::default()),
             },
         ],
     },

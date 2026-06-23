@@ -158,6 +158,7 @@ noise **dithering** to smooth banding when you drop to few colors.
 | --- | --- | --- |
 | **Shadows / Highlights** | Lift shadows or recover highlights independently | Shadows, Highlights |
 | **Lighting Normalization** | Even out uneven lighting across the image | Amount |
+| **Color Normalization** | Even out an uneven color cast while keeping brightness | Amount |
 
 ---
 
