@@ -334,6 +334,7 @@ pub struct KiflaApp {
     tiled: bool,
     last_apply: f64,
     pending_apply: Option<Receiver<image::RgbaImage>>,
+    pending_load: Option<Receiver<Result<(PathBuf, image::RgbaImage), String>>>,
     pending_open: Option<Receiver<Option<PathBuf>>>,
     pending_save: Option<Receiver<Option<PathBuf>>>,
     pending_import: Option<Receiver<Option<PathBuf>>>,
@@ -417,33 +418,42 @@ impl KiflaApp {
         self.pending_open = Some(rx);
     }
 
-    fn load_image(&mut self, path: PathBuf, ctx: &egui::Context) {
-        match image::open(&path) {
-            Ok(img) => {
-                let rgba = img.to_rgba8();
-                let size = [rgba.width() as usize, rgba.height() as usize];
-                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
-                self.original_texture =
-                    Some(ctx.load_texture("original", color_image, egui::TextureOptions::NEAREST));
-                self.original = Some(rgba);
-                self.size = size;
-                self.path = Some(path);
-                self.error = None;
-                // Start each opened image with a fresh, empty stack.
-                self.modifiers.clear();
-                self.row_heights.clear();
-                self.dragging = None;
-                self.recenter = true;
-                self.recenter_scale = 0.8;
-                self.unsaved = false;
-                self.saved_stack = self.stack_entries();
-                self.refresh_title(ctx);
-                self.rebuild(ctx);
-            }
-            Err(err) => {
-                self.error = Some(format!("Failed to load image: {err}"));
-            }
+    /// Decode an image on a background thread; the result is finalized in
+    /// `update` via [`finish_load`](Self::finish_load). Keeps the UI responsive
+    /// while large (e.g. 4K) files decode.
+    fn start_load(&mut self, path: PathBuf) {
+        if self.pending_load.is_some() {
+            return;
         }
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let result = image::open(&path)
+                .map(|img| (path, img.to_rgba8()))
+                .map_err(|err| format!("Failed to load image: {err}"));
+            let _ = tx.send(result);
+        });
+        self.pending_load = Some(rx);
+    }
+
+    fn finish_load(&mut self, path: PathBuf, rgba: image::RgbaImage, ctx: &egui::Context) {
+        let size = [rgba.width() as usize, rgba.height() as usize];
+        let color_image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+        self.original_texture =
+            Some(ctx.load_texture("original", color_image, egui::TextureOptions::NEAREST));
+        self.original = Some(rgba);
+        self.size = size;
+        self.path = Some(path);
+        self.error = None;
+        // Start each opened image with a fresh, empty stack.
+        self.modifiers.clear();
+        self.row_heights.clear();
+        self.dragging = None;
+        self.recenter = true;
+        self.recenter_scale = 0.8;
+        self.unsaved = false;
+        self.saved_stack = self.stack_entries();
+        self.refresh_title(ctx);
+        self.rebuild(ctx);
     }
 
     pub fn set_gpu(&mut self, gpu: GpuContext) {
@@ -461,6 +471,10 @@ impl KiflaApp {
             if entry.enabled {
                 steps.push(entry.modifier.gpu_step()?);
             }
+        }
+        // No modifiers (or all no-ops): skip the GPU round-trip entirely.
+        if steps.is_empty() {
+            return Some(original.clone());
         }
         Some(gpu.apply(original, &steps))
     }
@@ -820,18 +834,30 @@ impl eframe::App for KiflaApp {
                 .find_map(|f| f.path.clone())
         });
         if let Some(path) = dropped {
-            self.load_image(path, ctx);
+            self.start_load(path);
         }
 
         match self.pending_open.as_ref().map(Receiver::try_recv) {
             Some(Ok(result)) => {
                 self.pending_open = None;
                 if let Some(path) = result {
-                    self.load_image(path, ctx);
+                    self.start_load(path);
                 }
             }
             Some(Err(TryRecvError::Empty)) => ctx.request_repaint(),
             Some(Err(TryRecvError::Disconnected)) => self.pending_open = None,
+            None => {}
+        }
+        match self.pending_load.as_ref().map(Receiver::try_recv) {
+            Some(Ok(result)) => {
+                self.pending_load = None;
+                match result {
+                    Ok((path, rgba)) => self.finish_load(path, rgba, ctx),
+                    Err(err) => self.error = Some(err),
+                }
+            }
+            Some(Err(TryRecvError::Empty)) => ctx.request_repaint(),
+            Some(Err(TryRecvError::Disconnected)) => self.pending_load = None,
             None => {}
         }
         match self.pending_save.as_ref().map(Receiver::try_recv) {
@@ -1418,6 +1444,19 @@ impl eframe::App for KiflaApp {
                         egui::FontId::proportional(112.0),
                         egui::Color32::from_gray(60),
                     );
+                    if self.pending_load.is_some() {
+                        ui.vertical_centered(|ui| {
+                            ui.add_space((ui.available_height() / 2.0 - 20.0).max(0.0));
+                            ui.add(
+                                egui::Spinner::new()
+                                    .size(20.0)
+                                    .color(egui::Color32::from_gray(140)),
+                            );
+                            ui.add_space(6.0);
+                            ui.label(egui::RichText::new("Loading…").weak().size(14.0));
+                        });
+                        return;
+                    }
                     ui.vertical_centered(|ui| {
                         ui.add_space((ui.available_height() / 2.0 - 107.0).max(0.0));
                         ui.label(
