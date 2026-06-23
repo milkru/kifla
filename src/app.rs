@@ -468,7 +468,7 @@ impl KiflaApp {
             }
         }
         self.modifiers = modifiers;
-        self.row_heights.clear();
+        // Ids are reused on restore, so cached row heights stay valid.
         self.dragging = None;
         self.dirty = true;
         self.update_unsaved(ctx);
