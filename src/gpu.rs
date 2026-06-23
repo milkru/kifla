@@ -797,7 +797,12 @@ impl GpuContext {
             })
         };
 
-        let groups_pix = npix.div_ceil(256);
+        // Per-pixel passes need one workgroup per 256 pixels, but a single
+        // dispatch dimension is capped at 65535 workgroups - so spread them over
+        // a 2D grid and reconstruct the linear pixel index in the shader.
+        let total_wg = npix.div_ceil(256);
+        let grid_x = total_wg.min(65535);
+        let grid_y = total_wg.div_ceil(grid_x.max(1));
         let groups_n = n.div_ceil(256).max(1);
 
         // Init centroids from spread-out source pixels.
@@ -826,7 +831,7 @@ impl GpuContext {
                 let mut cp = enc.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
                 cp.set_pipeline(&km.assign);
                 cp.set_bind_group(0, &bind, &[]);
-                cp.dispatch_workgroups(groups_pix, 1, 1);
+                cp.dispatch_workgroups(grid_x, grid_y, 1);
                 cp.set_pipeline(&km.update);
                 cp.set_bind_group(0, &bind, &[]);
                 cp.dispatch_workgroups(groups_n, 1, 1);
@@ -844,7 +849,7 @@ impl GpuContext {
             let mut cp = enc.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
             cp.set_pipeline(&km.map);
             cp.set_bind_group(0, &bind_map, &[]);
-            cp.dispatch_workgroups(groups_pix, 1, 1);
+            cp.dispatch_workgroups(grid_x, grid_y, 1);
         }
         self.queue.submit(Some(enc.finish()));
 
@@ -1028,8 +1033,11 @@ fn init(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 
 @compute @workgroup_size(256)
-fn assign(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let i = gid.x;
+fn assign(
+    @builtin(global_invocation_id) gid: vec3<u32>,
+    @builtin(num_workgroups) nwg: vec3<u32>,
+) {
+    let i = gid.y * (nwg.x * 256u) + gid.x;
     if (i >= params.npix) { return; }
     let c = textureLoad(tex, coord_of(i), 0).rgb;
     let k = nearest(c);
@@ -1053,8 +1061,11 @@ fn update(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 
 @compute @workgroup_size(256)
-fn map(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let i = gid.x;
+fn map(
+    @builtin(global_invocation_id) gid: vec3<u32>,
+    @builtin(num_workgroups) nwg: vec3<u32>,
+) {
+    let i = gid.y * (nwg.x * 256u) + gid.x;
     if (i >= params.npix) { return; }
     let coord = coord_of(i);
     let src = textureLoad(tex, coord, 0);
