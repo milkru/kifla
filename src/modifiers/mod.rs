@@ -90,6 +90,18 @@ pub fn modifier_from_json(id: &str, params: &serde_json::Value) -> Option<Box<dy
     }
 }
 
+/// A fresh, default-valued modifier matching `id`, by scanning the menu
+/// registries for the factory that produces it. Used to reset a modifier in the
+/// stack back to its defaults.
+pub fn default_modifier(id: &str) -> Option<Box<dyn Modifier>> {
+    TRANSFORM_GROUPS
+        .iter()
+        .chain(IMAGE_GROUPS.iter())
+        .flat_map(|group| group.kinds.iter())
+        .map(|kind| (kind.make)())
+        .find(|modifier| modifier.id() == id)
+}
+
 // Modifiers offered in the "Image" menu (color and tone adjustments).
 pub static IMAGE_GROUPS: &[ModifierGroup] = &[
     ModifierGroup {

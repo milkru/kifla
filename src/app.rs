@@ -1184,6 +1184,7 @@ impl eframe::App for KiflaApp {
                     ui.separator();
 
                     let mut remove_index = None;
+                    let mut reset_index = None;
                     let mut set_collapse: Option<(u64, bool)> = None;
                     let mut drag_start: Option<usize> = None;
                     let mut reorder: Option<(usize, usize)> = None;
@@ -1191,6 +1192,7 @@ impl eframe::App for KiflaApp {
                     let mut measured: Vec<(u64, f32)> = Vec::new();
                     let dragging = self.dragging;
                     let drag_grab = self.drag_grab;
+                    let result_dims = (self.size[0] as u32, self.size[1] as u32);
                     let spacing = ui.spacing().item_spacing.y;
 
                     let heights: Vec<f32> = self
@@ -1308,6 +1310,24 @@ impl eframe::App for KiflaApp {
                                                 |ui| {
                                                     if ui.small_button("×").clicked() {
                                                         remove_index = Some(i);
+                                                    }
+                                                    // Offer reset only when the modifier differs
+                                                    // from a freshly-added (default) instance.
+                                                    let changed = modifiers::default_modifier(
+                                                        entry.modifier.id(),
+                                                    )
+                                                    .map(|mut d| {
+                                                        d.on_added(result_dims.0, result_dims.1);
+                                                        d.to_json() != entry.modifier.to_json()
+                                                    })
+                                                    .unwrap_or(false);
+                                                    if changed
+                                                        && ui
+                                                            .small_button("↺")
+                                                            .on_hover_text("Reset to defaults")
+                                                            .clicked()
+                                                    {
+                                                        reset_index = Some(i);
                                                     }
                                                     if name_handle(ui, entry, dim) {
                                                         drag_start = Some(i);
@@ -1430,6 +1450,16 @@ impl eframe::App for KiflaApp {
                         self.modifiers.remove(i);
                         self.dragging = None;
                         modifiers_dirty = true;
+                    }
+                    if let Some(i) = reset_index {
+                        let id = self.modifiers[i].modifier.id();
+                        if let Some(mut fresh) = modifiers::default_modifier(id) {
+                            if let Some(result) = &self.result {
+                                fresh.on_added(result.width(), result.height());
+                            }
+                            self.modifiers[i].modifier = fresh;
+                            modifiers_dirty = true;
+                        }
                     }
                 });
         }
