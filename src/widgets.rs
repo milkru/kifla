@@ -97,13 +97,40 @@ pub fn combo_scroll<T: PartialEq + Copy>(
     }
 }
 
+/// A clean Ctrl+scroll step (1, 2, or 5 times a power of ten) sized to the
+/// range, capped at 0.1 so even wide-range sliders still nudge finely.
+fn fine_step_for(range: &std::ops::RangeInclusive<f32>) -> f64 {
+    let span = (range.end() - range.start()).abs() as f64;
+    if span <= 0.0 {
+        return 0.1;
+    }
+    let target = span / 250.0;
+    let pow = 10f64.powf(target.log10().floor());
+    let step = [1.0, 2.0, 5.0]
+        .into_iter()
+        .map(|m| m * pow)
+        .find(|&s| s >= target)
+        .unwrap_or(10.0 * pow);
+    step.min(0.1)
+}
+
+/// Decimal places needed to show `step` (and finer values) without rounding it away.
+fn decimals_for(step: f64) -> usize {
+    if step >= 1.0 {
+        0
+    } else {
+        (-step.log10()).ceil().max(0.0).min(6.0) as usize
+    }
+}
+
 pub fn slider(
     ui: &mut egui::Ui,
     label: &str,
     value: &mut f32,
     range: std::ops::RangeInclusive<f32>,
 ) -> bool {
-    ui.label(format!("{label}: {value:.2}"));
+    let step = fine_step_for(&range);
+    ui.label(format!("{}: {:.*}", label, decimals_for(step), value));
 
     if !ui.is_enabled() {
         return false;
@@ -115,7 +142,6 @@ pub fn slider(
         ui.style_mut()
             .text_styles
             .insert(egui::TextStyle::Body, egui::FontId::proportional(1.0));
-        let step = (range.end() - range.start()) as f64 * 0.01;
         let response = ui.add(egui::Slider::new(value, range.clone()).show_value(false));
         commit = response.changed();
         commit |= fine_tune_step(ui, &response, value, range, step);
