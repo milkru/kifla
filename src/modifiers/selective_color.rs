@@ -1,8 +1,6 @@
 use eframe::egui;
 
-use crate::color;
 use crate::modifier::Modifier;
-use crate::pixel::{par_pixels, to_u8};
 use crate::widgets;
 
 #[derive(Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
@@ -43,25 +41,6 @@ impl Family {
             Family::Whites => "Whites",
             Family::Neutrals => "Neutrals",
             Family::Blacks => "Blacks",
-        }
-    }
-
-    fn weight(self, h: f32, s: f32, l: f32) -> f32 {
-        let hue_weight = |center: f32| {
-            let d = (h - center).abs();
-            let d = d.min(1.0 - d);
-            (1.0 - d / (1.0 / 6.0)).max(0.0) * s
-        };
-        match self {
-            Family::Reds => hue_weight(0.0),
-            Family::Yellows => hue_weight(1.0 / 6.0),
-            Family::Greens => hue_weight(2.0 / 6.0),
-            Family::Cyans => hue_weight(3.0 / 6.0),
-            Family::Blues => hue_weight(4.0 / 6.0),
-            Family::Magentas => hue_weight(5.0 / 6.0),
-            Family::Whites => ((l - 0.7) / 0.3).clamp(0.0, 1.0),
-            Family::Blacks => ((0.3 - l) / 0.3).clamp(0.0, 1.0),
-            Family::Neutrals => (1.0 - s) * (1.0 - (2.0 * l - 1.0).abs()),
         }
     }
 }
@@ -107,21 +86,6 @@ impl Modifier for SelectiveColor {
         changed |= widgets::slider(ui, "Yellow", &mut self.yellow, -1.0..=1.0);
         changed |= widgets::slider(ui, "Black", &mut self.black, -1.0..=1.0);
         changed
-    }
-
-    fn apply(&self, image: &mut image::RgbaImage) {
-        par_pixels(image, |px| {
-            let r = px[0] as f32 / 255.0;
-            let g = px[1] as f32 / 255.0;
-            let b = px[2] as f32 / 255.0;
-
-            let (h, s, l) = color::rgb_to_hsl(r, g, b);
-            let w = self.family.weight(h, s, l);
-
-            px[0] = to_u8(r - w * (self.cyan + self.black));
-            px[1] = to_u8(g - w * (self.magenta + self.black));
-            px[2] = to_u8(b - w * (self.yellow + self.black));
-        });
     }
 
     fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {

@@ -1,7 +1,6 @@
 use eframe::egui;
 
 use crate::modifier::Modifier;
-use crate::pixel::map_rgb;
 use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -38,14 +37,6 @@ impl Modifier for Exposure {
         changed |= widgets::slider(ui, "Offset", &mut self.offset, -0.5..=0.5);
         changed |= widgets::slider(ui, "Gamma", &mut self.gamma, 0.1..=5.0);
         changed
-    }
-
-    fn apply(&self, image: &mut image::RgbaImage) {
-        let mult = 2f32.powf(self.exposure);
-        let inv_gamma = 1.0 / self.gamma;
-        map_rgb(image, |value| {
-            (value * mult + self.offset).max(0.0).powf(inv_gamma)
-        });
     }
 
     fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {

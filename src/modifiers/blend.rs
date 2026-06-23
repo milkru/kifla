@@ -1,6 +1,4 @@
 use eframe::egui;
-use image::RgbaImage;
-use rayon::prelude::*;
 
 use crate::modifier::Modifier;
 use crate::widgets;
@@ -45,62 +43,6 @@ impl Modifier for Blend {
         changed |= widgets::slider(ui, "Overlap X", &mut self.overlap_x, 0.0..=1.0);
         changed |= widgets::slider(ui, "Overlap Y", &mut self.overlap_y, 0.0..=1.0);
         changed
-    }
-
-    fn apply(&self, image: &mut RgbaImage) {
-        let (w, h) = (image.width(), image.height());
-        if (self.overlap_x <= 0.0 && self.overlap_y <= 0.0) || w < 2 || h < 2 {
-            return;
-        }
-
-        let src = image.clone();
-        let (ow, oh) = (w / 2, h / 2);
-        let band_x = self.overlap_x * 0.5 * w as f32;
-        let band_y = self.overlap_y * 0.5 * h as f32;
-        let pow = 1.0 / self.falloff.clamp(0.01, 1.0);
-        let row_len = w as usize * 4;
-
-        let buffer: &mut [u8] = image;
-        buffer
-            .par_chunks_mut(row_len)
-            .enumerate()
-            .for_each(|(y, row)| {
-                let y = y as u32;
-                let ys = (y + oh) % h;
-                let dye = y.min(h - 1 - y) as f32;
-                let wy = if band_y > 0.0 && dye < band_y {
-                    (1.0 - dye / band_y).powf(pow).clamp(0.0, 1.0)
-                } else {
-                    0.0
-                };
-                for x in 0..w {
-                    let xs = (x + ow) % w;
-                    let dxe = x.min(w - 1 - x) as f32;
-                    let wx = if band_x > 0.0 && dxe < band_x {
-                        (1.0 - dxe / band_x).powf(pow).clamp(0.0, 1.0)
-                    } else {
-                        0.0
-                    };
-                    // Heal each seam along its own axis: the left/right seam blends
-                    // toward the same row half a width away, the top/bottom seam
-                    // toward the same column half a height away. Only the corner
-                    // blends diagonally. (Shifting both axes at once is what caused
-                    // the off-by-half-image misalignment.)
-                    let orig = src.get_pixel(x, y);
-                    let sample_x = src.get_pixel(xs, y);
-                    let sample_y = src.get_pixel(x, ys);
-                    let sample_xy = src.get_pixel(xs, ys);
-                    let o = x as usize * 4;
-                    for c in 0..4 {
-                        let healed_x =
-                            orig[c] as f32 * (1.0 - wx) + sample_x[c] as f32 * wx;
-                        let healed_y =
-                            sample_y[c] as f32 * (1.0 - wx) + sample_xy[c] as f32 * wx;
-                        let v = healed_x * (1.0 - wy) + healed_y * wy;
-                        row[o + c] = v.round().clamp(0.0, 255.0) as u8;
-                    }
-                }
-            });
     }
 
     fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {

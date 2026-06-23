@@ -2040,11 +2040,9 @@ name = "kifla"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "color_quant",
  "eframe",
  "egui",
  "image",
- "rayon",
  "rfd",
  "serde",
  "serde_json",

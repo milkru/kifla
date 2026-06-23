@@ -1,8 +1,6 @@
 use eframe::egui;
 
-use crate::color;
 use crate::modifier::Modifier;
-use crate::pixel::par_pixels;
 use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -36,20 +34,6 @@ impl Modifier for Threshold {
         changed |= widgets::slider(ui, "Threshold", &mut self.level, 0.0..=1.0);
         changed |= widgets::slider(ui, "Amount", &mut self.amount, 0.0..=1.0);
         changed
-    }
-
-    fn apply(&self, image: &mut image::RgbaImage) {
-        if self.amount <= 0.0 {
-            return;
-        }
-        par_pixels(image, |px| {
-            let lum = color::luma(px[0] as f32, px[1] as f32, px[2] as f32) / 255.0;
-            let value = if lum >= self.level { 255.0 } else { 0.0 };
-            for channel in &mut px[..3] {
-                let blended = *channel as f32 * (1.0 - self.amount) + value * self.amount;
-                *channel = blended.round() as u8;
-            }
-        });
     }
 
     fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {

@@ -1,5 +1,3 @@
-use image::imageops;
-
 use crate::modifier::Modifier;
 
 pub struct FlipHorizontal;
@@ -9,10 +7,6 @@ impl Modifier for FlipHorizontal {
 
     fn name(&self) -> &'static str {
         "Flip Horizontal"
-    }
-
-    fn apply(&self, image: &mut image::RgbaImage) {
-        *image = imageops::flip_horizontal(image);
     }
 
     fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {
@@ -37,10 +31,6 @@ impl Modifier for FlipVertical {
 
     fn name(&self) -> &'static str {
         "Flip Vertical"
-    }
-
-    fn apply(&self, image: &mut image::RgbaImage) {
-        *image = imageops::flip_vertical(image);
     }
 
     fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {

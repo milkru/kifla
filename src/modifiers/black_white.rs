@@ -1,7 +1,6 @@
 use eframe::egui;
 
 use crate::modifier::Modifier;
-use crate::pixel::par_pixels;
 use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -42,23 +41,6 @@ impl Modifier for BlackWhite {
         ui.separator();
         changed |= widgets::slider(ui, "Amount", &mut self.amount, 0.0..=1.0);
         changed
-    }
-
-    fn apply(&self, image: &mut image::RgbaImage) {
-        if self.amount <= 0.0 {
-            return;
-        }
-        par_pixels(image, |px| {
-            let gray = (px[0] as f32 / 255.0 * self.red
-                + px[1] as f32 / 255.0 * self.green
-                + px[2] as f32 / 255.0 * self.blue)
-                .clamp(0.0, 1.0)
-                * 255.0;
-            for channel in &mut px[..3] {
-                let blended = *channel as f32 * (1.0 - self.amount) + gray * self.amount;
-                *channel = blended.round() as u8;
-            }
-        });
     }
 
     fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {

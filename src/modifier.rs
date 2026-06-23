@@ -13,13 +13,9 @@ pub trait Modifier {
         serde_json::Value::Null
     }
 
-    fn apply(&self, image: &mut image::RgbaImage);
-
-    /// Optional GPU implementation: the fragment pass this modifier runs.
-    /// `None` (the default) means CPU-only - a stack is run on the GPU only when
-    /// every enabled modifier provides a pass, otherwise it falls back to
-    /// [`apply`](Modifier::apply). Most modifiers are a single pass; override
-    /// [`gpu_passes`](Modifier::gpu_passes) for multi-pass implementations.
+    /// The fragment pass this modifier runs. Single-pass modifiers implement
+    /// this; multi-pass ones override [`gpu_passes`](Modifier::gpu_passes) and
+    /// compute-based ones override [`gpu_step`](Modifier::gpu_step).
     fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {
         None
     }
@@ -28,15 +24,15 @@ pub trait Modifier {
     /// to the single [`gpu_pass`](Modifier::gpu_pass). Within the group, each
     /// pass reads the previous output (binding 0) and the group's input
     /// (binding 3).
-    fn gpu_passes(&self) -> Option<Vec<crate::gpu::GpuPass>> {
-        self.gpu_pass().map(|p| vec![p])
+    fn gpu_passes(&self) -> Vec<crate::gpu::GpuPass> {
+        self.gpu_pass().into_iter().collect()
     }
 
     /// The modifier's GPU work as a [`GpuStep`]. Defaults to wrapping
     /// [`gpu_passes`](Modifier::gpu_passes); modifiers needing compute (e.g.
     /// indexed color) override this directly.
-    fn gpu_step(&self) -> Option<crate::gpu::GpuStep> {
-        self.gpu_passes().map(crate::gpu::GpuStep::Fragment)
+    fn gpu_step(&self) -> crate::gpu::GpuStep {
+        crate::gpu::GpuStep::Fragment(self.gpu_passes())
     }
 
     fn has_settings(&self) -> bool {

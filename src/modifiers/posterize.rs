@@ -1,7 +1,6 @@
 use eframe::egui;
 
 use crate::modifier::Modifier;
-use crate::pixel::map_rgb;
 use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -43,11 +42,6 @@ impl Modifier for Posterize {
             changed |= widgets::fine_tune(ui, &r, &mut self.levels, 2.0..=256.0);
         });
         changed
-    }
-
-    fn apply(&self, image: &mut image::RgbaImage) {
-        let steps = (self.levels.round() - 1.0).max(1.0);
-        map_rgb(image, |value| (value * steps).round() / steps);
     }
 
     fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {

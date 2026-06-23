@@ -1,7 +1,6 @@
 use eframe::egui;
 
 use crate::modifier::Modifier;
-use crate::pixel::map_rgb;
 use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -45,17 +44,6 @@ impl Modifier for Levels {
         changed |= widgets::slider(ui, "Output black", &mut self.out_black, 0.0..=1.0);
         changed |= widgets::slider(ui, "Output white", &mut self.out_white, 0.0..=1.0);
         changed
-    }
-
-    fn apply(&self, image: &mut image::RgbaImage) {
-        let denom = (self.in_white - self.in_black).max(1e-4);
-        let inv_gamma = 1.0 / self.gamma;
-        map_rgb(image, |value| {
-            let value = ((value - self.in_black) / denom)
-                .clamp(0.0, 1.0)
-                .powf(inv_gamma);
-            self.out_black + value * (self.out_white - self.out_black)
-        });
     }
 
     fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {

@@ -1,5 +1,4 @@
 use eframe::egui;
-use image::imageops;
 
 use crate::modifier::Modifier;
 use crate::widgets;
@@ -68,21 +67,6 @@ impl Modifier for Crop {
             changed |= widgets::drag_value(ui, &mut self.height, 1..=max_h - self.y);
         });
         changed
-    }
-
-    fn apply(&self, image: &mut image::RgbaImage) {
-        let (iw, ih) = (image.width(), image.height());
-        if iw == 0 || ih == 0 {
-            return;
-        }
-        let x = self.x.min(iw - 1);
-        let y = self.y.min(ih - 1);
-        let width = self.width.clamp(1, iw - x);
-        let height = self.height.clamp(1, ih - y);
-        if x == 0 && y == 0 && width == iw && height == ih {
-            return;
-        }
-        *image = imageops::crop_imm(image, x, y, width, height).to_image();
     }
 
     fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {

@@ -1,39 +1,7 @@
 use eframe::egui;
-use image::RgbaImage;
-use rayon::prelude::*;
 
 use crate::modifier::Modifier;
 use crate::widgets;
-
-fn offset_wrap(image: &RgbaImage, ox: i64, oy: i64) -> RgbaImage {
-    let (w, h) = (image.width(), image.height());
-    if w == 0 || h == 0 {
-        return image.clone();
-    }
-    let oxm = ox.rem_euclid(w as i64) as u32;
-    let oym = oy.rem_euclid(h as i64) as u32;
-    if oxm == 0 && oym == 0 {
-        return image.clone();
-    }
-
-    let mut out = RgbaImage::new(w, h);
-    let row_len = w as usize * 4;
-    let oxb = oxm as usize * 4;
-    let cut = (w - oxm) as usize * 4;
-    let src: &[u8] = image;
-    let dst: &mut [u8] = &mut out;
-
-    dst.par_chunks_mut(row_len)
-        .enumerate()
-        .for_each(|(y, row)| {
-            let sy = ((y as u32 + h - oym) % h) as usize;
-            let s = &src[sy * row_len..sy * row_len + row_len];
-            row[0..oxb].copy_from_slice(&s[cut..row_len]);
-            row[oxb..row_len].copy_from_slice(&s[0..cut]);
-        });
-
-    out
-}
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct Offset {
@@ -78,13 +46,6 @@ impl Modifier for Offset {
             changed |= widgets::drag_value(ui, &mut self.y, -by..=by);
         });
         changed
-    }
-
-    fn apply(&self, image: &mut image::RgbaImage) {
-        if self.x == 0 && self.y == 0 {
-            return;
-        }
-        *image = offset_wrap(image, self.x as i64, self.y as i64);
     }
 
     fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {

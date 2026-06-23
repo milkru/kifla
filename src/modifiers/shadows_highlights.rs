@@ -1,8 +1,6 @@
 use eframe::egui;
 
-use crate::color;
 use crate::modifier::Modifier;
-use crate::pixel::par_pixels;
 use crate::widgets;
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
@@ -29,24 +27,33 @@ impl Modifier for ShadowsHighlights {
         changed
     }
 
-    fn apply(&self, image: &mut image::RgbaImage) {
-        par_pixels(image, |px| {
-            let lum = color::luma(px[0] as f32, px[1] as f32, px[2] as f32) / 255.0;
-            let shadow_mask = (1.0 - lum).powi(2);
-            let highlight_mask = lum.powi(2);
-
-            for channel in &mut px[..3] {
-                let mut value = *channel as f32 / 255.0;
-                // Positive shadows lift toward white, negative deepen toward
-                // black; positive highlights pull toward black, negative lift
-                // toward white. Scaling by the remaining headroom eases the
-                // push near the extremes so nothing slams to a hard clip.
-                let shadow_target = if self.shadows >= 0.0 { 1.0 - value } else { value };
-                value += self.shadows * shadow_mask * shadow_target;
-                let highlight_target = if self.highlights >= 0.0 { value } else { 1.0 - value };
-                value -= self.highlights * highlight_mask * highlight_target;
-                *channel = (value.clamp(0.0, 1.0) * 255.0).round() as u8;
-            }
-        });
+    fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {
+        Some(
+            crate::gpu::GpuPass::new(
+                "shadows_highlights",
+                r#"
+struct P { v: array<vec4<f32>, 1> };
+@group(0) @binding(2) var<uniform> p: P;
+@fragment
+fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+    let c = textureLoad(tex, vec2<i32>(in.pos.xy), 0);
+    let shadows = p.v[0].x;
+    let highlights = p.v[0].y;
+    let lum = dot(c.rgb, vec3<f32>(0.299, 0.587, 0.114));
+    let shadow_mask = (1.0 - lum) * (1.0 - lum);
+    let highlight_mask = lum * lum;
+    // Positive shadows lift toward white, negative deepen toward black;
+    // positive highlights pull toward black, negative lift toward white.
+    var rgb = c.rgb;
+    let shadow_target = select(rgb, vec3<f32>(1.0) - rgb, shadows >= 0.0);
+    rgb = rgb + shadows * shadow_mask * shadow_target;
+    let highlight_target = select(vec3<f32>(1.0) - rgb, rgb, highlights >= 0.0);
+    rgb = rgb - highlights * highlight_mask * highlight_target;
+    return vec4<f32>(clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0)), c.a);
+}
+"#,
+            )
+            .with_uniforms(&crate::gpu::uniforms(&[self.shadows, self.highlights])),
+        )
     }
 }

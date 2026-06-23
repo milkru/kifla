@@ -2,11 +2,9 @@
 
 mod app;
 mod bluenoise;
-mod color;
 mod gpu;
 mod modifier;
 mod modifiers;
-mod pixel;
 mod widgets;
 
 use eframe::egui;

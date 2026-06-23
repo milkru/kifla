@@ -1,8 +1,6 @@
 use eframe::egui;
 
-use crate::color;
 use crate::modifier::Modifier;
-use crate::pixel::{par_pixels, to_u8};
 use crate::widgets;
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
@@ -40,29 +38,6 @@ impl Modifier for ColorBalance {
         ui.separator();
         changed |= range_ui(ui, "Highlights", &mut self.highlights);
         changed
-    }
-
-    fn apply(&self, image: &mut image::RgbaImage) {
-        const STRENGTH: f32 = 0.5;
-        par_pixels(image, |px| {
-            let rgb = [
-                px[0] as f32 / 255.0,
-                px[1] as f32 / 255.0,
-                px[2] as f32 / 255.0,
-            ];
-            let lum = color::luma(rgb[0], rgb[1], rgb[2]);
-            let shadow = (1.0 - 2.0 * lum).max(0.0);
-            let highlight = (2.0 * lum - 1.0).max(0.0);
-            let midtone = (1.0 - shadow - highlight).max(0.0);
-
-            for c in 0..3 {
-                let shift = STRENGTH
-                    * (self.shadows[c] * shadow
-                        + self.midtones[c] * midtone
-                        + self.highlights[c] * highlight);
-                px[c] = to_u8(rgb[c] + shift);
-            }
-        });
     }
 
     fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {

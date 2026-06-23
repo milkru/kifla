@@ -340,15 +340,12 @@ pub struct KiflaApp {
     add_was_open: bool,
     show_about: bool,
     tiled: bool,
-    last_apply: f64,
-    pending_apply: Option<Receiver<image::RgbaImage>>,
     pending_load: Option<Receiver<Result<(PathBuf, image::RgbaImage), String>>>,
     pending_open: Option<Receiver<Option<PathBuf>>>,
     pending_save: Option<Receiver<Option<PathBuf>>>,
     pending_import: Option<Receiver<Option<PathBuf>>>,
     pending_export: Option<Receiver<Option<PathBuf>>>,
     gpu: Option<GpuContext>,
-    applied_gpu: bool,
 }
 
 /// Replay the modifier stack onto `image`, rebuilding each modifier from its
@@ -370,17 +367,6 @@ fn display_sampler() -> eframe::wgpu::SamplerDescriptor<'static> {
     }
 }
 
-fn apply_stack(mut image: image::RgbaImage, stack: &[StackEntry]) -> image::RgbaImage {
-    for entry in stack {
-        if !entry.enabled {
-            continue;
-        }
-        if let Some(modifier) = modifiers::modifier_from_json(&entry.id, &entry.params) {
-            modifier.apply(&mut image);
-        }
-    }
-    image
-}
 
 impl KiflaApp {
     fn refresh_title(&self, ctx: &egui::Context) {
@@ -535,58 +521,26 @@ impl KiflaApp {
         }
     }
 
-    /// Run the whole stack on the GPU, returning `None` if the GPU is
-    /// unavailable or any enabled modifier lacks a GPU implementation (in which
-    /// case the caller falls back to the CPU path).
-    fn try_gpu_apply(&self) -> Option<image::RgbaImage> {
-        let gpu = self.gpu.as_ref()?;
-        let original = self.original.as_ref()?;
-        let mut steps = Vec::new();
-        for entry in &self.modifiers {
-            if entry.enabled {
-                steps.push(entry.modifier.gpu_step()?);
-            }
-        }
-        // No modifiers (or all no-ops): skip the GPU round-trip entirely.
-        if steps.is_empty() {
-            return Some(original.clone());
-        }
-        Some(gpu.apply(original, &steps))
-    }
-
-    /// Apply the stack synchronously and upload the result. Used for one-shot
-    /// events (open, import) where waiting briefly is fine.
+    /// Run the modifier stack on the GPU and store the result. GPU is the only
+    /// path; if it's somehow unavailable the original passes through unchanged.
     fn rebuild(&mut self, ctx: &egui::Context) {
         let Some(original) = self.original.clone() else {
             self.result = None;
             self.display_dirty = true;
             return;
         };
-        let result = match self.try_gpu_apply() {
-            Some(result) => {
-                self.applied_gpu = true;
-                result
-            }
-            None => {
-                self.applied_gpu = false;
-                apply_stack(original, &self.stack_entries())
-            }
+        let steps: Vec<crate::gpu::GpuStep> = self
+            .modifiers
+            .iter()
+            .filter(|e| e.enabled)
+            .map(|e| e.modifier.gpu_step())
+            .collect();
+        let result = match (&self.gpu, steps.is_empty()) {
+            // No modifiers, or no GPU: the original is the result as-is.
+            (_, true) | (None, _) => original,
+            (Some(gpu), false) => gpu.apply(&original, &steps),
         };
         self.upload_result(result, ctx);
-    }
-
-    /// Apply the stack on a background thread. Live setting changes use this so
-    /// a slow modifier never freezes the UI.
-    fn spawn_apply(&mut self) {
-        let Some(original) = self.original.clone() else {
-            return;
-        };
-        let stack = self.stack_entries();
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let _ = tx.send(apply_stack(original, &stack));
-        });
-        self.pending_apply = Some(rx);
     }
 
     fn upload_result(&mut self, result: image::RgbaImage, _ctx: &egui::Context) {
@@ -1512,21 +1466,6 @@ impl eframe::App for KiflaApp {
                             ui.separator();
                         }
                         ui.label(format!("{zoom_pct:.0}%"));
-                        ui.separator();
-                        ui.label(if self.applied_gpu { "GPU" } else { "CPU" })
-                            .on_hover_text(
-                                "Which path produced the current result. The GPU path \
-                                 runs when every modifier in the stack supports it.",
-                            );
-                        if self.pending_apply.is_some() || self.dirty || modifiers_dirty {
-                            ui.separator();
-                            ui.label("Processing…");
-                            ui.add(
-                                egui::Spinner::new()
-                                    .size(14.0)
-                                    .color(egui::Color32::from_gray(140)),
-                            );
-                        }
                     });
                 });
             });
@@ -1790,38 +1729,11 @@ impl eframe::App for KiflaApp {
         if modifiers_dirty {
             self.update_unsaved(ctx);
         }
-        // Collect a finished background apply.
-        match self.pending_apply.as_ref().map(Receiver::try_recv) {
-            Some(Ok(result)) => {
-                self.pending_apply = None;
-                self.upload_result(result, ctx);
-            }
-            Some(Err(TryRecvError::Empty)) => ctx.request_repaint(),
-            Some(Err(TryRecvError::Disconnected)) => self.pending_apply = None,
-            None => {}
-        }
-        // Dispatch a new apply when changes are pending and none is in flight.
-        // Changes made mid-apply keep `dirty` set and are picked up next, so the
-        // result always converges on the latest settings. Throttled to ~30fps.
-        if self.dirty && self.pending_apply.is_none() {
-            const INTERVAL: f64 = 1.0 / 30.0;
-            let now = ctx.input(|i| i.time);
-            let elapsed = now - self.last_apply;
-            if elapsed >= INTERVAL {
-                // GPU-eligible stacks run synchronously (fast); otherwise the
-                // CPU path runs on a background thread so the UI stays live.
-                if let Some(result) = self.try_gpu_apply() {
-                    self.applied_gpu = true;
-                    self.upload_result(result, ctx);
-                } else {
-                    self.applied_gpu = false;
-                    self.spawn_apply();
-                }
-                self.last_apply = now;
-                self.dirty = false;
-            } else {
-                ctx.request_repaint_after(std::time::Duration::from_secs_f64(INTERVAL - elapsed));
-            }
+        // Re-apply the stack on the GPU whenever something changed. It's fast
+        // enough to run synchronously each frame the state is dirty.
+        if self.dirty {
+            self.rebuild(ctx);
+            self.dirty = false;
         }
     }
 }

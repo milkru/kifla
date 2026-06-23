@@ -1,7 +1,6 @@
 use eframe::egui;
 
 use crate::modifier::Modifier;
-use crate::pixel::par_pixels;
 use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -34,15 +33,6 @@ impl Modifier for Curves {
 
     fn settings_ui(&mut self, ui: &mut egui::Ui) -> bool {
         widgets::curve_editor(ui, &mut self.points)
-    }
-
-    fn apply(&self, image: &mut image::RgbaImage) {
-        let lut = build_lut(&self.points);
-        par_pixels(image, |px| {
-            for channel in &mut px[..3] {
-                *channel = lut[*channel as usize];
-            }
-        });
     }
 
     fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {

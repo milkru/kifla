@@ -1,7 +1,6 @@
 use eframe::egui;
 
 use crate::modifier::Modifier;
-use crate::pixel::{par_pixels, to_u8};
 use crate::widgets;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -49,22 +48,6 @@ impl Modifier for ChannelMixer {
         ui.separator();
         changed |= output_ui(ui, "Output Blue", &mut self.blue);
         changed
-    }
-
-    fn apply(&self, image: &mut image::RgbaImage) {
-        par_pixels(image, |px| {
-            let r = px[0] as f32 / 255.0;
-            let g = px[1] as f32 / 255.0;
-            let b = px[2] as f32 / 255.0;
-
-            let nr = self.red[0] * r + self.red[1] * g + self.red[2] * b;
-            let ng = self.green[0] * r + self.green[1] * g + self.green[2] * b;
-            let nb = self.blue[0] * r + self.blue[1] * g + self.blue[2] * b;
-
-            px[0] = to_u8(nr);
-            px[1] = to_u8(ng);
-            px[2] = to_u8(nb);
-        });
     }
 
     fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {
