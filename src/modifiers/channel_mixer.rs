@@ -66,4 +66,30 @@ impl Modifier for ChannelMixer {
             px[2] = to_u8(nb);
         });
     }
+
+    fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {
+        Some(
+            crate::gpu::GpuPass::new(
+                "channel_mixer",
+                r#"
+struct P { v: array<vec4<f32>, 3> };
+@group(0) @binding(2) var<uniform> p: P;
+@fragment
+fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+    let c = textureLoad(tex, vec2<i32>(in.pos.xy), 0);
+    let nr = dot(p.v[0].xyz, c.rgb);
+    let ng = dot(p.v[1].xyz, c.rgb);
+    let nb = dot(p.v[2].xyz, c.rgb);
+    let rgb = clamp(vec3<f32>(nr, ng, nb), vec3<f32>(0.0), vec3<f32>(1.0));
+    return vec4<f32>(rgb, c.a);
+}
+"#,
+            )
+            .with_uniforms(&crate::gpu::uniforms(&[
+                self.red[0], self.red[1], self.red[2], 0.0,
+                self.green[0], self.green[1], self.green[2], 0.0,
+                self.blue[0], self.blue[1], self.blue[2], 0.0,
+            ])),
+        )
+    }
 }

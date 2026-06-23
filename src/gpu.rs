@@ -31,6 +31,63 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VsOut {
 
 @group(0) @binding(0) var tex: texture_2d<f32>;
 @group(0) @binding(1) var samp: sampler;
+
+// HSL helpers mirroring src/color.rs exactly so GPU output matches the CPU path.
+fn rgb_to_hsl(c: vec3<f32>) -> vec3<f32> {
+    let mx = max(c.r, max(c.g, c.b));
+    let mn = min(c.r, min(c.g, c.b));
+    let l = (mx + mn) * 0.5;
+    let d = mx - mn;
+    if (d < 1e-6) {
+        return vec3<f32>(0.0, 0.0, l);
+    }
+    var s: f32;
+    if (l > 0.5) {
+        s = d / (2.0 - mx - mn);
+    } else {
+        s = d / (mx + mn);
+    }
+    var h: f32;
+    if (mx == c.r) {
+        h = (c.g - c.b) / d + select(0.0, 6.0, c.g < c.b);
+    } else if (mx == c.g) {
+        h = (c.b - c.r) / d + 2.0;
+    } else {
+        h = (c.r - c.g) / d + 4.0;
+    }
+    return vec3<f32>(h / 6.0, s, l);
+}
+
+fn hue_channel(p: f32, q: f32, t_in: f32) -> f32 {
+    var t = t_in;
+    if (t < 0.0) { t += 1.0; }
+    if (t > 1.0) { t -= 1.0; }
+    if (t < 1.0 / 6.0) { return p + (q - p) * 6.0 * t; }
+    if (t < 1.0 / 2.0) { return q; }
+    if (t < 2.0 / 3.0) { return p + (q - p) * (2.0 / 3.0 - t) * 6.0; }
+    return p;
+}
+
+fn hsl_to_rgb(hsl: vec3<f32>) -> vec3<f32> {
+    let h = hsl.x;
+    let s = hsl.y;
+    let l = hsl.z;
+    if (s <= 0.0) {
+        return vec3<f32>(l, l, l);
+    }
+    var q: f32;
+    if (l < 0.5) {
+        q = l * (1.0 + s);
+    } else {
+        q = l + s - l * s;
+    }
+    let p = 2.0 * l - q;
+    return vec3<f32>(
+        hue_channel(p, q, h + 1.0 / 3.0),
+        hue_channel(p, q, h),
+        hue_channel(p, q, h - 1.0 / 3.0),
+    );
+}
 "#;
 
 /// One fragment-shader pass in a modifier's GPU chain.

@@ -46,4 +46,29 @@ impl Modifier for Vibrance {
             px[2] = to_u8(nb);
         });
     }
+
+    fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {
+        Some(
+            crate::gpu::GpuPass::new(
+                "vibrance",
+                r#"
+struct P { v: array<vec4<f32>, 1> };
+@group(0) @binding(2) var<uniform> p: P;
+@fragment
+fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+    let c = textureLoad(tex, vec2<i32>(in.pos.xy), 0);
+    let vib = p.v[0].x;
+    let sat = p.v[0].y;
+    var hsl = rgb_to_hsl(c.rgb);
+    var s = hsl.y * (1.0 + sat);
+    s += vib * (1.0 - s);
+    hsl.y = clamp(s, 0.0, 1.0);
+    let rgb = clamp(hsl_to_rgb(hsl), vec3<f32>(0.0), vec3<f32>(1.0));
+    return vec4<f32>(rgb, c.a);
+}
+"#,
+            )
+            .with_uniforms(&crate::gpu::uniforms(&[self.vibrance, self.saturation])),
+        )
+    }
 }

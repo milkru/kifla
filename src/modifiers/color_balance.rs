@@ -64,4 +64,32 @@ impl Modifier for ColorBalance {
             }
         });
     }
+
+    fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {
+        Some(
+            crate::gpu::GpuPass::new(
+                "color_balance",
+                r#"
+struct P { v: array<vec4<f32>, 3> };
+@group(0) @binding(2) var<uniform> p: P;
+@fragment
+fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+    let c = textureLoad(tex, vec2<i32>(in.pos.xy), 0);
+    let lum = dot(c.rgb, vec3<f32>(0.299, 0.587, 0.114));
+    let shadow = max(1.0 - 2.0 * lum, 0.0);
+    let highlight = max(2.0 * lum - 1.0, 0.0);
+    let midtone = max(1.0 - shadow - highlight, 0.0);
+    let shift = 0.5 * (p.v[0].xyz * shadow + p.v[1].xyz * midtone + p.v[2].xyz * highlight);
+    let rgb = clamp(c.rgb + shift, vec3<f32>(0.0), vec3<f32>(1.0));
+    return vec4<f32>(rgb, c.a);
+}
+"#,
+            )
+            .with_uniforms(&crate::gpu::uniforms(&[
+                self.shadows[0], self.shadows[1], self.shadows[2], 0.0,
+                self.midtones[0], self.midtones[1], self.midtones[2], 0.0,
+                self.highlights[0], self.highlights[1], self.highlights[2], 0.0,
+            ])),
+        )
+    }
 }

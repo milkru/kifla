@@ -86,4 +86,26 @@ impl Modifier for Offset {
         }
         *image = offset_wrap(image, self.x as i64, self.y as i64);
     }
+
+    fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {
+        Some(
+            crate::gpu::GpuPass::new(
+                "offset",
+                r#"
+struct P { v: array<vec4<f32>, 1> };
+@group(0) @binding(2) var<uniform> p: P;
+@fragment
+fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+    let dim = vec2<i32>(textureDimensions(tex));
+    let coord = vec2<i32>(in.pos.xy);
+    let raw = vec2<i32>(i32(p.v[0].x), i32(p.v[0].y));
+    let off = ((raw % dim) + dim) % dim;
+    let src = ((coord - off) % dim + dim) % dim;
+    return textureLoad(tex, src, 0);
+}
+"#,
+            )
+            .with_uniforms(&crate::gpu::uniforms(&[self.x as f32, self.y as f32])),
+        )
+    }
 }

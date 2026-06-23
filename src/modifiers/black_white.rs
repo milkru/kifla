@@ -60,4 +60,31 @@ impl Modifier for BlackWhite {
             }
         });
     }
+
+    fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {
+        Some(
+            crate::gpu::GpuPass::new(
+                "black_white",
+                r#"
+struct P { v: array<vec4<f32>, 1> };
+@group(0) @binding(2) var<uniform> p: P;
+@fragment
+fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+    let c = textureLoad(tex, vec2<i32>(in.pos.xy), 0);
+    let weights = p.v[0].xyz;
+    let amount = p.v[0].w;
+    let gray = clamp(dot(c.rgb, weights), 0.0, 1.0);
+    let rgb = c.rgb * (1.0 - amount) + vec3<f32>(gray) * amount;
+    return vec4<f32>(rgb, c.a);
+}
+"#,
+            )
+            .with_uniforms(&crate::gpu::uniforms(&[
+                self.red,
+                self.green,
+                self.blue,
+                self.amount,
+            ])),
+        )
+    }
 }

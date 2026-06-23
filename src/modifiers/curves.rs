@@ -44,6 +44,32 @@ impl Modifier for Curves {
             }
         });
     }
+
+    fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {
+        // Pass the 256-entry LUT (normalized) as 64 vec4s and look it up by the
+        // 8-bit channel value, matching the CPU table exactly.
+        let lut = build_lut(&self.points);
+        let table: Vec<f32> = lut.iter().map(|&v| v as f32 / 255.0).collect();
+        Some(
+            crate::gpu::GpuPass::new(
+                "curves",
+                r#"
+struct P { lut: array<vec4<f32>, 64> };
+@group(0) @binding(2) var<uniform> p: P;
+fn lookup(value: f32) -> f32 {
+    let i = i32(round(clamp(value, 0.0, 1.0) * 255.0));
+    return p.lut[i >> 2u][u32(i) & 3u];
+}
+@fragment
+fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+    let c = textureLoad(tex, vec2<i32>(in.pos.xy), 0);
+    return vec4<f32>(lookup(c.r), lookup(c.g), lookup(c.b), c.a);
+}
+"#,
+            )
+            .with_uniforms(&crate::gpu::uniforms(&table)),
+        )
+    }
 }
 
 fn build_lut(points: &[egui::Pos2]) -> [u8; 256] {
