@@ -15,12 +15,21 @@ pub trait Modifier {
 
     fn apply(&self, image: &mut image::RgbaImage);
 
-    /// Optional GPU implementation: the fragment passes this modifier runs.
+    /// Optional GPU implementation: the fragment pass this modifier runs.
     /// `None` (the default) means CPU-only - a stack is run on the GPU only when
     /// every enabled modifier provides a pass, otherwise it falls back to
-    /// [`apply`](Modifier::apply).
+    /// [`apply`](Modifier::apply). Most modifiers are a single pass; override
+    /// [`gpu_passes`](Modifier::gpu_passes) for multi-pass implementations.
     fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {
         None
+    }
+
+    /// The full sequence of GPU passes this modifier runs (a "group"). Defaults
+    /// to the single [`gpu_pass`](Modifier::gpu_pass). Within the group, each
+    /// pass reads the previous output (binding 0) and the group's input
+    /// (binding 3).
+    fn gpu_passes(&self) -> Option<Vec<crate::gpu::GpuPass>> {
+        self.gpu_pass().map(|p| vec![p])
     }
 
     fn has_settings(&self) -> bool {

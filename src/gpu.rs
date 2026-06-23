@@ -31,6 +31,10 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VsOut {
 
 @group(0) @binding(0) var tex: texture_2d<f32>;
 @group(0) @binding(1) var samp: sampler;
+// The input to the current modifier's pass group (same as `tex` for the first
+// pass). Multi-pass modifiers read it to combine the original with an
+// intermediate (e.g. lighting reads the source plus its blurred illumination).
+@group(0) @binding(3) var src_tex: texture_2d<f32>;
 
 // HSL helpers mirroring src/color.rs exactly so GPU output matches the CPU path.
 fn rgb_to_hsl(c: vec3<f32>) -> vec3<f32> {
@@ -120,18 +124,13 @@ pub enum OutSize {
     Same,
     /// Width and height swapped (90° rotation).
     Swap,
+    /// Half the input size (rounded up, min 1) - for downsample pyramids.
+    Half,
+    /// The group's input size (e.g. a final pass that upsamples a small level
+    /// back to full resolution).
+    Source,
     /// Fixed dimensions.
     Fixed(u32, u32),
-}
-
-impl OutSize {
-    fn resolve(self, w: u32, h: u32) -> (u32, u32) {
-        match self {
-            OutSize::Same => (w, h),
-            OutSize::Swap => (h, w),
-            OutSize::Fixed(fw, fh) => (fw.max(1), fh.max(1)),
-        }
-    }
 }
 
 /// One fragment-shader pass in a modifier's GPU chain.
@@ -226,6 +225,16 @@ impl GpuContext {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -308,15 +317,23 @@ impl GpuContext {
         })
     }
 
-    /// Run the modifier chain on `input` and read the result back to an image.
-    pub fn apply(&self, input: &image::RgbaImage, passes: &[GpuPass]) -> image::RgbaImage {
+    /// Run the modifier chain (one `Vec<GpuPass>` group per enabled modifier) on
+    /// `input` and read the result back to an image. Within a group, each pass's
+    /// input is bound at binding 0 and the group's first input at binding 3, so
+    /// multi-pass modifiers can combine the original with intermediates.
+    pub fn apply(&self, input: &image::RgbaImage, groups: &[Vec<GpuPass>]) -> image::RgbaImage {
         use wgpu::util::DeviceExt;
 
-        let (mut w, mut h) = (input.width(), input.height());
-        let mut current = self.make_texture(w, h);
+        // All textures live in a pool so views stay valid until submission; we
+        // index into it rather than moving textures around.
+        let mut pool: Vec<wgpu::Texture> = Vec::new();
+        let mut dims: Vec<(u32, u32)> = Vec::new();
+        let (iw, ih) = (input.width(), input.height());
+        pool.push(self.make_texture(iw, ih));
+        dims.push((iw, ih));
         self.queue.write_texture(
             wgpu::ImageCopyTexture {
-                texture: &current,
+                texture: &pool[0],
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
@@ -324,12 +341,12 @@ impl GpuContext {
             input,
             wgpu::ImageDataLayout {
                 offset: 0,
-                bytes_per_row: Some(w * 4),
-                rows_per_image: Some(h),
+                bytes_per_row: Some(iw * 4),
+                rows_per_image: Some(ih),
             },
             wgpu::Extent3d {
-                width: w,
-                height: h,
+                width: iw,
+                height: ih,
                 depth_or_array_layers: 1,
             },
         );
@@ -338,73 +355,88 @@ impl GpuContext {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("kifla.enc") });
 
-        // Keep resources alive until the queue submission below.
-        let mut keep: Vec<wgpu::Texture> = Vec::new();
+        let mut cur = 0usize;
+        for group in groups {
+            let group_in = cur;
+            for pass in group {
+                let (w, h) = dims[cur];
+                let (ow, oh) = match pass.out_size {
+                    OutSize::Same => (w, h),
+                    OutSize::Swap => (h, w),
+                    OutSize::Half => (w.div_ceil(2).max(1), h.div_ceil(2).max(1)),
+                    OutSize::Source => dims[group_in],
+                    OutSize::Fixed(fw, fh) => (fw.max(1), fh.max(1)),
+                };
+                pool.push(self.make_texture(ow, oh));
+                dims.push((ow, oh));
+                let tgt = pool.len() - 1;
+                let pipeline = self.pipeline(pass);
 
-        for pass in passes {
-            let (ow, oh) = pass.out_size.resolve(w, h);
-            let target = self.make_texture(ow, oh);
-            let pipeline = self.pipeline(pass);
+                let bytes: &[u8] = if pass.uniforms.is_empty() {
+                    &[0u8; 16]
+                } else {
+                    &pass.uniforms
+                };
+                let ubuf =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("kifla.uniforms"),
+                            contents: bytes,
+                            usage: wgpu::BufferUsages::UNIFORM,
+                        });
 
-            let bytes: &[u8] = if pass.uniforms.is_empty() {
-                &[0u8; 16]
-            } else {
-                &pass.uniforms
-            };
-            let ubuf = self
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("kifla.uniforms"),
-                    contents: bytes,
-                    usage: wgpu::BufferUsages::UNIFORM,
-                });
-
-            let in_view = current.create_view(&wgpu::TextureViewDescriptor::default());
-            let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("kifla.bind"),
-                layout: &self.layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&in_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&self.sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: ubuf.as_entire_binding(),
-                    },
-                ],
-            });
-
-            let out_view = target.create_view(&wgpu::TextureViewDescriptor::default());
-            {
-                let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("kifla.pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &out_view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                            store: wgpu::StoreOp::Store,
+                let in_view = pool[cur].create_view(&wgpu::TextureViewDescriptor::default());
+                let src_view = pool[group_in].create_view(&wgpu::TextureViewDescriptor::default());
+                let out_view = pool[tgt].create_view(&wgpu::TextureViewDescriptor::default());
+                let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("kifla.bind"),
+                    layout: &self.layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(&in_view),
                         },
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&self.sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: ubuf.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::TextureView(&src_view),
+                        },
+                    ],
                 });
-                rp.set_pipeline(&pipeline);
-                rp.set_bind_group(0, &bind, &[]);
-                rp.draw(0..3, 0..1);
-            }
 
-            keep.push(current);
-            current = target;
-            w = ow;
-            h = oh;
+                {
+                    let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("kifla.pass"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &out_view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                    });
+                    rp.set_pipeline(&pipeline);
+                    rp.set_bind_group(0, &bind, &[]);
+                    rp.draw(0..3, 0..1);
+                }
+
+                cur = tgt;
+            }
         }
+
+        let current = &pool[cur];
+        let (w, h) = dims[cur];
 
         // Copy the final texture into a read-back buffer (rows padded to 256).
         let padded = (w * 4).div_ceil(256) * 256;
@@ -416,7 +448,7 @@ impl GpuContext {
         });
         encoder.copy_texture_to_buffer(
             wgpu::ImageCopyTexture {
-                texture: &current,
+                texture: current,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
