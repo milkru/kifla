@@ -275,6 +275,8 @@ const SHORTCUT_RECENTER: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTR
 const SHORTCUT_ADD: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::A);
 const SHORTCUT_ABOUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F1);
 const SHORTCUT_TILE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::T);
+const SHORTCUT_UNDO: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Z);
+const SHORTCUT_REDO: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Y);
 
 /// Bump when an existing modifier's parameters change in an incompatible way.
 /// Adding brand-new modifiers does not require a bump.
@@ -346,12 +348,15 @@ pub struct KiflaApp {
     pending_import: Option<Receiver<Option<PathBuf>>>,
     pending_export: Option<Receiver<Option<PathBuf>>>,
     gpu: Option<GpuContext>,
+    // Undo/redo: snapshots of the modifier stack. `history_pos` indexes the
+    // current state; undo/redo move it. A new snapshot is committed once an
+    // interaction settles (pointer released), so a slider drag is one step.
+    // Each entry keeps its numeric `id` so restoring reuses the same ids and
+    // per-modifier UI state (collapse/expand) survives undo/redo.
+    history: Vec<Vec<(u64, StackEntry)>>,
+    history_pos: usize,
 }
 
-/// Replay the modifier stack onto `image`, rebuilding each modifier from its
-/// serialized parameters. Shared by the synchronous and background apply paths
-/// so both produce identical results (and so the worker needs no `Send` bound on
-/// the live `dyn Modifier` objects).
 /// Sampler for the preview: crisp Nearest when magnified (zoomed in past 100%),
 /// smooth trilinear (Linear + mipmaps) when minified (zoomed out) so the result
 /// doesn't shimmer or alias.
@@ -395,6 +400,83 @@ impl KiflaApp {
                 params: e.modifier.to_json(),
             })
             .collect()
+    }
+
+    /// Snapshot the current stack, pairing each entry with its numeric id so a
+    /// later restore can reuse the same ids (preserving per-modifier UI state).
+    fn stack_snapshot(&self) -> Vec<(u64, StackEntry)> {
+        self.modifiers
+            .iter()
+            .map(|e| {
+                (
+                    e.id,
+                    StackEntry {
+                        id: e.modifier.id().to_owned(),
+                        enabled: e.enabled,
+                        params: e.modifier.to_json(),
+                    },
+                )
+            })
+            .collect()
+    }
+
+    /// Reset undo history to a single baseline snapshot of the current stack.
+    fn reset_history(&mut self) {
+        self.history = vec![self.stack_snapshot()];
+        self.history_pos = 0;
+    }
+
+    /// Commit the current stack as a new history snapshot if it changed. Called
+    /// once an interaction settles, so a slider drag becomes a single step.
+    fn record_history(&mut self) {
+        let cur = self.stack_snapshot();
+        if self.history.is_empty() {
+            self.history = vec![cur];
+            self.history_pos = 0;
+            return;
+        }
+        if cur != self.history[self.history_pos] {
+            self.history.truncate(self.history_pos + 1);
+            self.history.push(cur);
+            self.history_pos = self.history.len() - 1;
+        }
+    }
+
+    fn undo(&mut self, ctx: &egui::Context) {
+        if self.history_pos > 0 {
+            self.history_pos -= 1;
+            self.restore_history(ctx);
+        }
+    }
+
+    fn redo(&mut self, ctx: &egui::Context) {
+        if self.history_pos + 1 < self.history.len() {
+            self.history_pos += 1;
+            self.restore_history(ctx);
+        }
+    }
+
+    /// Rebuild the modifier stack from the snapshot at `history_pos`.
+    fn restore_history(&mut self, ctx: &egui::Context) {
+        let snapshot = self.history[self.history_pos].clone();
+        let mut modifiers = Vec::with_capacity(snapshot.len());
+        for (id, entry) in &snapshot {
+            if let Some(modifier) = modifiers::modifier_from_json(&entry.id, &entry.params) {
+                // Reuse the original id so egui-side per-modifier UI state
+                // (collapse/expand) keyed on it survives the restore.
+                self.next_id = self.next_id.max(*id);
+                modifiers.push(ModifierEntry {
+                    id: *id,
+                    modifier,
+                    enabled: entry.enabled,
+                });
+            }
+        }
+        self.modifiers = modifiers;
+        self.row_heights.clear();
+        self.dragging = None;
+        self.dirty = true;
+        self.update_unsaved(ctx);
     }
 
     fn update_unsaved(&mut self, ctx: &egui::Context) {
@@ -459,6 +541,7 @@ impl KiflaApp {
         self.recenter_scale = 0.8;
         self.unsaved = false;
         self.saved_stack = self.stack_entries();
+        self.reset_history();
         self.refresh_title(ctx);
         self.rebuild(ctx);
     }
@@ -692,6 +775,7 @@ impl KiflaApp {
         self.modifiers = modifiers;
         self.error = None;
         self.update_unsaved(ctx);
+        self.reset_history();
         self.rebuild(ctx);
     }
 
@@ -707,6 +791,7 @@ impl KiflaApp {
         self.view = None;
         self.unsaved = false;
         self.saved_stack = Vec::new();
+        self.reset_history();
         self.refresh_title(ctx);
     }
 
@@ -831,6 +916,8 @@ impl eframe::App for KiflaApp {
 
         let mut recenter_requested = false;
         let mut add_requested = false;
+        let mut undo_requested = false;
+        let mut redo_requested = false;
         let typing = ctx.memory(|m| m.focus().is_some());
         ctx.input_mut(|i| {
             open_requested |= i.consume_shortcut(&SHORTCUT_OPEN);
@@ -851,6 +938,8 @@ impl eframe::App for KiflaApp {
                 }
                 if !typing {
                     add_requested |= i.consume_shortcut(&SHORTCUT_ADD);
+                    undo_requested |= i.consume_shortcut(&SHORTCUT_UNDO);
+                    redo_requested |= i.consume_shortcut(&SHORTCUT_REDO);
                 }
             }
         });
@@ -997,6 +1086,33 @@ impl eframe::App for KiflaApp {
                         .clicked()
                     {
                         quit_requested = true;
+                        ui.close_menu();
+                    }
+                });
+                ui.menu_button("Edit", |ui| {
+                    ui.style_mut().wrap = Some(false);
+                    let can_undo = self.history_pos > 0;
+                    let can_redo = self.history_pos + 1 < self.history.len();
+                    if ui
+                        .add_enabled(
+                            loaded && can_undo,
+                            egui::Button::new("↩ Undo")
+                                .shortcut_text(ui.ctx().format_shortcut(&SHORTCUT_UNDO)),
+                        )
+                        .clicked()
+                    {
+                        undo_requested = true;
+                        ui.close_menu();
+                    }
+                    if ui
+                        .add_enabled(
+                            loaded && can_redo,
+                            egui::Button::new("↪ Redo")
+                                .shortcut_text(ui.ctx().format_shortcut(&SHORTCUT_REDO)),
+                        )
+                        .clicked()
+                    {
+                        redo_requested = true;
                         ui.close_menu();
                     }
                 });
@@ -1729,6 +1845,19 @@ impl eframe::App for KiflaApp {
         if modifiers_dirty {
             self.update_unsaved(ctx);
         }
+
+        // Undo/redo, or otherwise commit a history snapshot once the current
+        // interaction settles (no mouse button held and not typing into a
+        // field), so a slider drag or a typed value collapses into a single
+        // undo step.
+        if undo_requested {
+            self.undo(ctx);
+        } else if redo_requested {
+            self.redo(ctx);
+        } else if self.original.is_some() && !typing && !ctx.input(|i| i.pointer.any_down()) {
+            self.record_history();
+        }
+
         // Re-apply the stack on the GPU whenever something changed. It's fast
         // enough to run synchronously each frame the state is dirty.
         if self.dirty {
