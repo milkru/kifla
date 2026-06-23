@@ -64,6 +64,44 @@ pub fn fine_tune_step<Num: egui::emath::Numeric>(
     response.drag_released() || response.lost_focus()
 }
 
+/// Cycles a dropdown's value with Ctrl+scroll while its (closed) header is
+/// hovered - scroll up for the previous option, down for the next, wrapping
+/// around. `response` is the `ComboBox::show_ui` header response. Returns true
+/// when the value changed.
+pub fn combo_scroll<T: PartialEq + Copy>(
+    ui: &egui::Ui,
+    response: &egui::Response,
+    value: &mut T,
+    all: &[T],
+) -> bool {
+    if !response.hovered() || all.is_empty() {
+        return false;
+    }
+    let dy = ui.input(|i| {
+        i.events.iter().find_map(|e| match e {
+            egui::Event::MouseWheel {
+                delta, modifiers, ..
+            } if modifiers.ctrl => Some(delta.y),
+            _ => None,
+        })
+    });
+    let Some(dy) = dy else { return false };
+    if dy == 0.0 {
+        return false;
+    }
+    let Some(index) = all.iter().position(|v| v == value) else {
+        return false;
+    };
+    let step = if dy > 0.0 { -1 } else { 1 };
+    let next = (index as i32 + step).rem_euclid(all.len() as i32) as usize;
+    if next != index {
+        *value = all[next];
+        true
+    } else {
+        false
+    }
+}
+
 pub fn slider(
     ui: &mut egui::Ui,
     label: &str,

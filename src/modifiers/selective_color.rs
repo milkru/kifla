@@ -89,7 +89,7 @@ impl Modifier for SelectiveColor {
     fn settings_ui(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;
         if ui.is_enabled() {
-            egui::ComboBox::from_id_source("selective_color_family")
+            let combo = egui::ComboBox::from_id_source("selective_color_family")
                 .selected_text(self.family.name())
                 .show_ui(ui, |ui| {
                     for family in Family::ALL {
@@ -98,6 +98,7 @@ impl Modifier for SelectiveColor {
                             .changed();
                     }
                 });
+            changed |= widgets::combo_scroll(ui, &combo.response, &mut self.family, &Family::ALL);
         } else {
             ui.label(format!("Colors: {}", self.family.name()));
         }

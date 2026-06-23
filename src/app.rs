@@ -270,7 +270,7 @@ const SHORTCUT_SAVE_AS: KeyboardShortcut = KeyboardShortcut::new(
 );
 const SHORTCUT_CLOSE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::W);
 const SHORTCUT_QUIT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Q);
-const SHORTCUT_FIT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Num0);
+const SHORTCUT_RECENTER: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Num0);
 const SHORTCUT_ADD: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::A);
 const SHORTCUT_ABOUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F1);
 const SHORTCUT_TILE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::T);
@@ -293,7 +293,7 @@ struct StackFile {
     #[serde(alias = "edits")]
     modifiers: Vec<StackEntry>,
 }
-const COMPARE_KEY: Key = Key::C;
+const COMPARE_KEY: Key = Key::Tab;
 const SHORTCUT_COMPARE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, COMPARE_KEY);
 
 struct ModifierEntry {
@@ -314,8 +314,8 @@ pub struct KiflaApp {
     error: Option<String>,
     zoom: f32,
     pan: egui::Vec2,
-    fit: bool,
-    fit_scale: f32,
+    recenter: bool,
+    recenter_scale: f32,
     view: Option<(egui::Rect, egui::Pos2)>,
     dragging: Option<usize>,
     drag_grab: f32,
@@ -331,10 +331,27 @@ pub struct KiflaApp {
     show_about: bool,
     tiled: bool,
     last_apply: f64,
+    pending_apply: Option<Receiver<image::RgbaImage>>,
     pending_open: Option<Receiver<Option<PathBuf>>>,
     pending_save: Option<Receiver<Option<PathBuf>>>,
     pending_import: Option<Receiver<Option<PathBuf>>>,
     pending_export: Option<Receiver<Option<PathBuf>>>,
+}
+
+/// Replay the modifier stack onto `image`, rebuilding each modifier from its
+/// serialized parameters. Shared by the synchronous and background apply paths
+/// so both produce identical results (and so the worker needs no `Send` bound on
+/// the live `dyn Modifier` objects).
+fn apply_stack(mut image: image::RgbaImage, stack: &[StackEntry]) -> image::RgbaImage {
+    for entry in stack {
+        if !entry.enabled {
+            continue;
+        }
+        if let Some(modifier) = modifiers::modifier_from_json(&entry.id, &entry.params) {
+            modifier.apply(&mut image);
+        }
+    }
+    image
 }
 
 impl KiflaApp {
@@ -408,8 +425,12 @@ impl KiflaApp {
                 self.size = size;
                 self.path = Some(path);
                 self.error = None;
-                self.fit = true;
-                self.fit_scale = 0.8;
+                // Start each opened image with a fresh, empty stack.
+                self.modifiers.clear();
+                self.row_heights.clear();
+                self.dragging = None;
+                self.recenter = true;
+                self.recenter_scale = 0.8;
                 self.unsaved = false;
                 self.saved_stack = self.stack_entries();
                 self.refresh_title(ctx);
@@ -421,20 +442,33 @@ impl KiflaApp {
         }
     }
 
+    /// Apply the stack synchronously and upload the result. Used for one-shot
+    /// events (open, import, generate) where waiting briefly is fine.
     fn rebuild(&mut self, ctx: &egui::Context) {
-        let Some(original) = &self.original else {
+        let Some(original) = self.original.clone() else {
             self.result = None;
             self.texture = None;
             return;
         };
+        let result = apply_stack(original, &self.stack_entries());
+        self.upload_result(result, ctx);
+    }
 
-        let mut result = original.clone();
-        for entry in &self.modifiers {
-            if entry.enabled {
-                entry.modifier.apply(&mut result);
-            }
-        }
+    /// Apply the stack on a background thread. Interactive edits use this so a
+    /// slow modifier never freezes the UI.
+    fn spawn_apply(&mut self) {
+        let Some(original) = self.original.clone() else {
+            return;
+        };
+        let stack = self.stack_entries();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(apply_stack(original, &stack));
+        });
+        self.pending_apply = Some(rx);
+    }
 
+    fn upload_result(&mut self, result: image::RgbaImage, ctx: &egui::Context) {
         let size = [result.width() as usize, result.height() as usize];
         let color_image = egui::ColorImage::from_rgba_unmultiplied(size, result.as_raw());
         self.texture =
@@ -719,7 +753,7 @@ impl eframe::App for KiflaApp {
         let mut add_modifier: Option<Box<dyn Modifier>> = None;
         let mut modifiers_dirty = false;
 
-        let mut fit_requested = false;
+        let mut recenter_requested = false;
         let mut add_requested = false;
         let typing = ctx.memory(|m| m.focus().is_some());
         ctx.input_mut(|i| {
@@ -732,7 +766,7 @@ impl eframe::App for KiflaApp {
                 save_requested |= i.consume_shortcut(&SHORTCUT_SAVE);
                 save_as_requested |= i.consume_shortcut(&SHORTCUT_SAVE_AS);
                 close_requested |= i.consume_shortcut(&SHORTCUT_CLOSE);
-                fit_requested |= i.consume_shortcut(&SHORTCUT_FIT);
+                recenter_requested |= i.consume_shortcut(&SHORTCUT_RECENTER);
                 if i.consume_shortcut(&SHORTCUT_TILE) {
                     self.tiled = !self.tiled;
                 }
@@ -880,12 +914,12 @@ impl eframe::App for KiflaApp {
                     if ui
                         .add_enabled(
                             loaded,
-                            egui::Button::new("🔍 Fit")
-                                .shortcut_text(ui.ctx().format_shortcut(&SHORTCUT_FIT)),
+                            egui::Button::new("🔍 Recenter")
+                                .shortcut_text(ui.ctx().format_shortcut(&SHORTCUT_RECENTER)),
                         )
                         .clicked()
                     {
-                        fit_requested = true;
+                        recenter_requested = true;
                         ui.close_menu();
                     }
                     let original = ui.add_enabled(
@@ -990,9 +1024,9 @@ impl eframe::App for KiflaApp {
             }
         }
 
-        if fit_requested {
-            self.fit = true;
-            self.fit_scale = 1.0;
+        if recenter_requested {
+            self.recenter = true;
+            self.recenter_scale = 0.8;
         }
         let comparing = compare_held && self.original_texture.is_some();
 
@@ -1294,10 +1328,10 @@ impl eframe::App for KiflaApp {
                     }
                     let zoom_pct = match (self.view, &self.result) {
                         (Some((view, _)), Some(image)) => {
-                            let fit = (view.width() / image.width() as f32)
+                            let fit_ratio = (view.width() / image.width() as f32)
                                 .min(view.height() / image.height() as f32);
-                            if fit > 0.0 {
-                                self.zoom / fit * 100.0
+                            if fit_ratio > 0.0 {
+                                self.zoom / fit_ratio * 100.0
                             } else {
                                 100.0
                             }
@@ -1311,6 +1345,15 @@ impl eframe::App for KiflaApp {
                             ui.separator();
                         }
                         ui.label(format!("{zoom_pct:.0}%"));
+                        if self.pending_apply.is_some() || self.dirty || modifiers_dirty {
+                            ui.separator();
+                            ui.label("Processing…");
+                            ui.add(
+                                egui::Spinner::new()
+                                    .size(14.0)
+                                    .color(egui::Color32::from_gray(140)),
+                            );
+                        }
                     });
                 });
             });
@@ -1388,15 +1431,15 @@ impl eframe::App for KiflaApp {
                 let response = ui.allocate_rect(rect, egui::Sense::drag());
                 let tex_size = texture.size_vec2();
 
-                if self.fit {
-                    let fit = (rect.width() / tex_size.x).min(rect.height() / tex_size.y);
-                    self.zoom = fit * self.fit_scale;
+                if self.recenter {
+                    let fit_ratio = (rect.width() / tex_size.x).min(rect.height() / tex_size.y);
+                    self.zoom = fit_ratio * self.recenter_scale;
                     self.pan = egui::Vec2::ZERO;
                 }
 
                 if response.dragged() {
                     self.pan += response.drag_delta();
-                    self.fit = false;
+                    self.recenter = false;
                 }
 
                 if response.hovered() {
@@ -1409,7 +1452,7 @@ impl eframe::App for KiflaApp {
                             self.pan = to_cursor - (to_cursor - self.pan) * factor;
                         }
                         self.zoom = new_zoom;
-                        self.fit = false;
+                        self.recenter = false;
                     }
                 }
 
@@ -1522,13 +1565,25 @@ impl eframe::App for KiflaApp {
         if modifiers_dirty {
             self.update_unsaved(ctx);
         }
-        if self.dirty {
-            // Throttle stack re-application to ~30fps while settings are dragged.
+        // Collect a finished background apply.
+        match self.pending_apply.as_ref().map(Receiver::try_recv) {
+            Some(Ok(result)) => {
+                self.pending_apply = None;
+                self.upload_result(result, ctx);
+            }
+            Some(Err(TryRecvError::Empty)) => ctx.request_repaint(),
+            Some(Err(TryRecvError::Disconnected)) => self.pending_apply = None,
+            None => {}
+        }
+        // Dispatch a new apply when changes are pending and none is in flight.
+        // Changes made mid-apply keep `dirty` set and are picked up next, so the
+        // result always converges on the latest settings. Throttled to ~30fps.
+        if self.dirty && self.pending_apply.is_none() {
             const INTERVAL: f64 = 1.0 / 30.0;
             let now = ctx.input(|i| i.time);
             let elapsed = now - self.last_apply;
             if elapsed >= INTERVAL {
-                self.rebuild(ctx);
+                self.spawn_apply();
                 self.last_apply = now;
                 self.dirty = false;
             } else {

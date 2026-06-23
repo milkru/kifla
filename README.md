@@ -2,11 +2,11 @@
 
 A small desktop app for tinkering with textures.
 
-Open an image (or drop one in), stack up some modifiers, watch the preview update live, and save the result. Everything is non-destructive - each modifier is replayed from the original, so you can tweak, toggle, or remove any of them at any time. Hold the compare key to peek at the original, and the preview has pan/zoom, fit-to-window, rulers and a cursor readout.
+Open an image (or drop one in), stack up some modifiers, watch the preview update live, and save the result. Everything is non-destructive - each modifier is replayed from the original, so you can tweak, toggle, or remove any of them at any time. Hold the compare key (Tab) to peek at the original, and the preview has pan/zoom, recenter, rulers and a cursor readout.
 
 ## What it does
 
-- **Transform** - flip, rotate, resize (with a few sampling modes, including min/max-luminance for masks)
+- **Transform** - flip, rotate, resize (with a few sampling modes, including min/max-luminance for masks and a detail-preserving downscale that keeps thin seams)
 - **Image adjustments** - brightness/contrast, levels, curves, exposure, hue/saturation, vibrance, color balance, black & white, channel mixer, posterize, threshold, selective color, invert, shadows/highlights
 - **Save** to PNG, JPEG, BMP, TGA, or multi-resolution ICO
 
