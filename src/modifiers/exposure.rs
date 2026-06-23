@@ -47,4 +47,28 @@ impl Modifier for Exposure {
             (value * mult + self.offset).max(0.0).powf(inv_gamma)
         });
     }
+
+    fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {
+        let mult = 2f32.powf(self.exposure);
+        let inv_gamma = 1.0 / self.gamma;
+        Some(
+            crate::gpu::GpuPass::new(
+                "exposure",
+                r#"
+struct P { v: array<vec4<f32>, 1> };
+@group(0) @binding(2) var<uniform> p: P;
+@fragment
+fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+    let c = textureLoad(tex, vec2<i32>(in.pos.xy), 0);
+    let mult = p.v[0].x;
+    let offset = p.v[0].y;
+    let inv_gamma = p.v[0].z;
+    let rgb = pow(max(c.rgb * mult + vec3<f32>(offset), vec3<f32>(0.0)), vec3<f32>(inv_gamma));
+    return vec4<f32>(clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0)), c.a);
+}
+"#,
+            )
+            .with_uniforms(&crate::gpu::uniforms(&[mult, self.offset, inv_gamma])),
+        )
+    }
 }

@@ -57,4 +57,37 @@ impl Modifier for Levels {
             self.out_black + value * (self.out_white - self.out_black)
         });
     }
+
+    fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {
+        let denom = (self.in_white - self.in_black).max(1e-4);
+        let inv_gamma = 1.0 / self.gamma;
+        Some(
+            crate::gpu::GpuPass::new(
+                "levels",
+                r#"
+struct P { v: array<vec4<f32>, 2> };
+@group(0) @binding(2) var<uniform> p: P;
+@fragment
+fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+    let c = textureLoad(tex, vec2<i32>(in.pos.xy), 0);
+    let in_black = p.v[0].x;
+    let denom = p.v[0].y;
+    let inv_gamma = p.v[0].z;
+    let out_black = p.v[0].w;
+    let out_white = p.v[1].x;
+    let n = pow(clamp((c.rgb - vec3<f32>(in_black)) / denom, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(inv_gamma));
+    let rgb = vec3<f32>(out_black) + n * (out_white - out_black);
+    return vec4<f32>(clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0)), c.a);
+}
+"#,
+            )
+            .with_uniforms(&crate::gpu::uniforms(&[
+                self.in_black,
+                denom,
+                inv_gamma,
+                self.out_black,
+                self.out_white,
+            ])),
+        )
+    }
 }

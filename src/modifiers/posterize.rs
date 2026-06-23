@@ -49,4 +49,25 @@ impl Modifier for Posterize {
         let steps = (self.levels.round() - 1.0).max(1.0);
         map_rgb(image, |value| (value * steps).round() / steps);
     }
+
+    fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {
+        let steps = (self.levels.round() - 1.0).max(1.0);
+        Some(
+            crate::gpu::GpuPass::new(
+                "posterize",
+                r#"
+struct P { v: array<vec4<f32>, 1> };
+@group(0) @binding(2) var<uniform> p: P;
+@fragment
+fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+    let c = textureLoad(tex, vec2<i32>(in.pos.xy), 0);
+    let steps = p.v[0].x;
+    let rgb = round(c.rgb * steps) / steps;
+    return vec4<f32>(clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0)), c.a);
+}
+"#,
+            )
+            .with_uniforms(&crate::gpu::uniforms(&[steps])),
+        )
+    }
 }

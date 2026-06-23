@@ -67,6 +67,17 @@ impl GpuPass {
     }
 }
 
+/// Pack `f32` params into uniform-buffer bytes, padding to a multiple of four
+/// so each group lands on a 16-byte (vec4) boundary as WGSL `uniform` requires.
+/// Shaders read them as `array<vec4<f32>, N>` (see binding 2).
+pub fn uniforms(values: &[f32]) -> Vec<u8> {
+    let mut padded = values.to_vec();
+    while padded.len() % 4 != 0 {
+        padded.push(0.0);
+    }
+    bytemuck::cast_slice(&padded).to_vec()
+}
+
 pub struct GpuContext {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,

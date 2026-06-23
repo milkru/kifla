@@ -34,4 +34,26 @@ impl Modifier for BrightnessContrast {
             (value + self.brightness - 0.5) * factor + 0.5
         });
     }
+
+    fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {
+        let factor = 1.0 + self.contrast;
+        Some(
+            crate::gpu::GpuPass::new(
+                "brightness_contrast",
+                r#"
+struct P { v: array<vec4<f32>, 1> };
+@group(0) @binding(2) var<uniform> p: P;
+@fragment
+fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+    let c = textureLoad(tex, vec2<i32>(in.pos.xy), 0);
+    let brightness = p.v[0].x;
+    let factor = p.v[0].y;
+    let rgb = (c.rgb + vec3<f32>(brightness - 0.5)) * factor + vec3<f32>(0.5);
+    return vec4<f32>(clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0)), c.a);
+}
+"#,
+            )
+            .with_uniforms(&crate::gpu::uniforms(&[self.brightness, factor])),
+        )
+    }
 }
