@@ -2,6 +2,7 @@
 
 mod app;
 mod color;
+mod gpu;
 mod modifier;
 mod modifiers;
 mod pixel;
@@ -34,6 +35,7 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport,
+        renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };
 
@@ -61,7 +63,12 @@ fn main() -> eframe::Result<()> {
             style.visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_gray(220));
             style.interaction.selectable_labels = false;
             cc.egui_ctx.set_style(style);
-            Box::<KiflaApp>::default()
+
+            let mut app = KiflaApp::default();
+            if let Some(rs) = &cc.wgpu_render_state {
+                app.set_gpu(gpu::GpuContext::new(rs.device.clone(), rs.queue.clone()));
+            }
+            Box::new(app)
         }),
     )
 }

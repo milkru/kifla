@@ -4,6 +4,7 @@ use std::sync::mpsc::{Receiver, TryRecvError};
 use eframe::egui;
 use egui::{Key, KeyboardShortcut, Modifiers};
 
+use crate::gpu::GpuContext;
 use crate::modifier::{Modifier, ModifierGroup};
 use crate::modifiers;
 
@@ -337,6 +338,8 @@ pub struct KiflaApp {
     pending_save: Option<Receiver<Option<PathBuf>>>,
     pending_import: Option<Receiver<Option<PathBuf>>>,
     pending_export: Option<Receiver<Option<PathBuf>>>,
+    gpu: Option<GpuContext>,
+    applied_gpu: bool,
 }
 
 /// Replay the modifier stack onto `image`, rebuilding each modifier from its
@@ -443,15 +446,43 @@ impl KiflaApp {
         }
     }
 
+    pub fn set_gpu(&mut self, gpu: GpuContext) {
+        self.gpu = Some(gpu);
+    }
+
+    /// Run the whole stack on the GPU, returning `None` if the GPU is
+    /// unavailable or any enabled modifier lacks a GPU implementation (in which
+    /// case the caller falls back to the CPU path).
+    fn try_gpu_apply(&self) -> Option<image::RgbaImage> {
+        let gpu = self.gpu.as_ref()?;
+        let original = self.original.as_ref()?;
+        let mut passes = Vec::new();
+        for entry in &self.modifiers {
+            if entry.enabled {
+                passes.push(entry.modifier.gpu_pass()?);
+            }
+        }
+        Some(gpu.apply(original, &passes))
+    }
+
     /// Apply the stack synchronously and upload the result. Used for one-shot
-    /// events (open, import, generate) where waiting briefly is fine.
+    /// events (open, import) where waiting briefly is fine.
     fn rebuild(&mut self, ctx: &egui::Context) {
         let Some(original) = self.original.clone() else {
             self.result = None;
             self.texture = None;
             return;
         };
-        let result = apply_stack(original, &self.stack_entries());
+        let result = match self.try_gpu_apply() {
+            Some(result) => {
+                self.applied_gpu = true;
+                result
+            }
+            None => {
+                self.applied_gpu = false;
+                apply_stack(original, &self.stack_entries())
+            }
+        };
         self.upload_result(result, ctx);
     }
 
@@ -1349,6 +1380,12 @@ impl eframe::App for KiflaApp {
                             ui.separator();
                         }
                         ui.label(format!("{zoom_pct:.0}%"));
+                        ui.separator();
+                        ui.label(if self.applied_gpu { "GPU" } else { "CPU" })
+                            .on_hover_text(
+                                "Which path produced the current result. The GPU path \
+                                 runs when every modifier in the stack supports it.",
+                            );
                         if self.pending_apply.is_some() || self.dirty || modifiers_dirty {
                             ui.separator();
                             ui.label("Processing…");
@@ -1626,7 +1663,15 @@ impl eframe::App for KiflaApp {
             let now = ctx.input(|i| i.time);
             let elapsed = now - self.last_apply;
             if elapsed >= INTERVAL {
-                self.spawn_apply();
+                // GPU-eligible stacks run synchronously (fast); otherwise the
+                // CPU path runs on a background thread so the UI stays live.
+                if let Some(result) = self.try_gpu_apply() {
+                    self.applied_gpu = true;
+                    self.upload_result(result, ctx);
+                } else {
+                    self.applied_gpu = false;
+                    self.spawn_apply();
+                }
                 self.last_apply = now;
                 self.dirty = false;
             } else {

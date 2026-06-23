@@ -15,6 +15,14 @@ pub trait Modifier {
 
     fn apply(&self, image: &mut image::RgbaImage);
 
+    /// Optional GPU implementation: the fragment passes this modifier runs.
+    /// `None` (the default) means CPU-only - a stack is run on the GPU only when
+    /// every enabled modifier provides a pass, otherwise it falls back to
+    /// [`apply`](Modifier::apply).
+    fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {
+        None
+    }
+
     fn has_settings(&self) -> bool {
         false
     }
