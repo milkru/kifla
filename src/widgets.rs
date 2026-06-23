@@ -207,8 +207,6 @@ pub fn curve_editor(ui: &mut egui::Ui, points: &mut Vec<egui::Pos2>) -> bool {
                     c.x = c.x.clamp(points[i - 1].x + 0.001, points[i + 1].x - 0.001);
                 }
                 points[i] = c;
-            }
-            if pr.drag_released() {
                 commit = true;
             }
             if pr.secondary_clicked() && i != 0 && i != last {
