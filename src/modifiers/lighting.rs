@@ -22,11 +22,11 @@ impl Modifier for Lighting {
     }
 
     fn settings_ui(&mut self, ui: &mut egui::Ui) -> bool {
-        widgets::slider(ui, "Amount", &mut self.amount, 0.0..=2.0)
+        widgets::slider(ui, "Amount", &mut self.amount, 0.0..=3.0)
     }
 
     fn apply(&self, image: &mut image::RgbaImage) {
-        let amount = self.amount.clamp(0.0, 2.0);
+        let amount = self.amount.clamp(0.0, 3.0);
         if amount <= 0.0 {
             return;
         }
@@ -52,7 +52,9 @@ impl Modifier for Lighting {
         let buffer: &mut [u8] = image;
         buffer.par_chunks_mut(4).enumerate().for_each(|(i, px)| {
             let gain = (mean / illum[i].max(1e-3)).clamp(0.2, 5.0);
-            let gain = 1.0 + (gain - 1.0) * amount;
+            // Keep the gain non-negative so strong amounts flatten rather than
+            // invert bright regions (which reads as contour banding).
+            let gain = (1.0 + (gain - 1.0) * amount).max(0.0);
             for channel in &mut px[..3] {
                 *channel = (*channel as f32 * gain).round().clamp(0.0, 255.0) as u8;
             }

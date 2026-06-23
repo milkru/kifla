@@ -270,7 +270,7 @@ const SHORTCUT_SAVE_AS: KeyboardShortcut = KeyboardShortcut::new(
 );
 const SHORTCUT_CLOSE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::W);
 const SHORTCUT_QUIT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Q);
-const SHORTCUT_RECENTER: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Num0);
+const SHORTCUT_RECENTER: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::R);
 const SHORTCUT_ADD: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::A);
 const SHORTCUT_ABOUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F1);
 const SHORTCUT_TILE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::T);
@@ -454,8 +454,8 @@ impl KiflaApp {
         self.upload_result(result, ctx);
     }
 
-    /// Apply the stack on a background thread. Interactive edits use this so a
-    /// slow modifier never freezes the UI.
+    /// Apply the stack on a background thread. Live setting changes use this so
+    /// a slow modifier never freezes the UI.
     fn spawn_apply(&mut self) {
         let Some(original) = self.original.clone() else {
             return;
@@ -763,8 +763,11 @@ impl eframe::App for KiflaApp {
                 self.show_about = true;
             }
             if loaded {
-                save_requested |= i.consume_shortcut(&SHORTCUT_SAVE);
+                // Consume Save As (Ctrl+Shift+S) before Save (Ctrl+S): egui's
+                // Ctrl+S shortcut also fires while Shift is held, so the more
+                // specific one must claim the event first.
                 save_as_requested |= i.consume_shortcut(&SHORTCUT_SAVE_AS);
+                save_requested |= i.consume_shortcut(&SHORTCUT_SAVE);
                 close_requested |= i.consume_shortcut(&SHORTCUT_CLOSE);
                 recenter_requested |= i.consume_shortcut(&SHORTCUT_RECENTER);
                 if i.consume_shortcut(&SHORTCUT_TILE) {
@@ -1031,11 +1034,11 @@ impl eframe::App for KiflaApp {
         let comparing = compare_held && self.original_texture.is_some();
 
         if loaded {
-            const EDITS_WIDTH: f32 = 258.0;
+            const MODIFIERS_WIDTH: f32 = 258.0;
             egui::SidePanel::left("modifiers_panel")
                 .resizable(true)
-                .default_width(EDITS_WIDTH)
-                .width_range(80.0..=EDITS_WIDTH)
+                .default_width(MODIFIERS_WIDTH)
+                .width_range(80.0..=MODIFIERS_WIDTH)
                 .show(ctx, |ui| {
                     ui.spacing_mut().slider_width = 150.0;
                     ui.style_mut().spacing.scroll.floating = false;

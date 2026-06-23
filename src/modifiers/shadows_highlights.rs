@@ -24,8 +24,8 @@ impl Modifier for ShadowsHighlights {
 
     fn settings_ui(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;
-        changed |= widgets::slider(ui, "Shadows", &mut self.shadows, 0.0..=1.0);
-        changed |= widgets::slider(ui, "Highlights", &mut self.highlights, 0.0..=1.0);
+        changed |= widgets::slider(ui, "Shadows", &mut self.shadows, -1.0..=1.0);
+        changed |= widgets::slider(ui, "Highlights", &mut self.highlights, -1.0..=1.0);
         changed
     }
 
@@ -37,8 +37,14 @@ impl Modifier for ShadowsHighlights {
 
             for channel in &mut px[..3] {
                 let mut value = *channel as f32 / 255.0;
-                value += self.shadows * shadow_mask * (1.0 - value);
-                value -= self.highlights * highlight_mask * value;
+                // Positive shadows lift toward white, negative deepen toward
+                // black; positive highlights pull toward black, negative lift
+                // toward white. Scaling by the remaining headroom eases the
+                // push near the extremes so nothing slams to a hard clip.
+                let shadow_target = if self.shadows >= 0.0 { 1.0 - value } else { value };
+                value += self.shadows * shadow_mask * shadow_target;
+                let highlight_target = if self.highlights >= 0.0 { value } else { 1.0 - value };
+                value -= self.highlights * highlight_mask * highlight_target;
                 *channel = (value.clamp(0.0, 1.0) * 255.0).round() as u8;
             }
         });
