@@ -84,4 +84,26 @@ impl Modifier for Crop {
         }
         *image = imageops::crop_imm(image, x, y, width, height).to_image();
     }
+
+    fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {
+        // Output is the crop rect; each output pixel reads the input offset by
+        // (x, y). The region fits the input by construction (clamped in the UI
+        // against the source size), so no out-of-bounds reads occur.
+        Some(
+            crate::gpu::GpuPass::new(
+                "crop",
+                r#"
+struct P { v: array<vec4<f32>, 1> };
+@group(0) @binding(2) var<uniform> p: P;
+@fragment
+fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+    let off = vec2<i32>(i32(p.v[0].x), i32(p.v[0].y));
+    return textureLoad(tex, vec2<i32>(in.pos.xy) + off, 0);
+}
+"#,
+            )
+            .with_uniforms(&crate::gpu::uniforms(&[self.x as f32, self.y as f32]))
+            .with_out_size(crate::gpu::OutSize::Fixed(self.width.max(1), self.height.max(1))),
+        )
+    }
 }

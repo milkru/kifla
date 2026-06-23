@@ -68,6 +68,29 @@ fn hue_channel(p: f32, q: f32, t_in: f32) -> f32 {
     return p;
 }
 
+// Bilinear sample of the wrapped (tiling) input, mirroring pixel::sample_wrap
+// so geometry modifiers match the CPU path. `p` is in source-pixel space.
+fn sample_wrap(p: vec2<f32>) -> vec4<f32> {
+    let dim = vec2<f32>(textureDimensions(tex));
+    let xf = p.x - floor(p.x / dim.x) * dim.x;
+    let yf = p.y - floor(p.y / dim.y) * dim.y;
+    let w = i32(dim.x);
+    let h = i32(dim.y);
+    let x0 = i32(floor(xf)) % w;
+    let y0 = i32(floor(yf)) % h;
+    let x1 = (x0 + 1) % w;
+    let y1 = (y0 + 1) % h;
+    let tx = xf - floor(xf);
+    let ty = yf - floor(yf);
+    let c00 = textureLoad(tex, vec2<i32>(x0, y0), 0);
+    let c10 = textureLoad(tex, vec2<i32>(x1, y0), 0);
+    let c01 = textureLoad(tex, vec2<i32>(x0, y1), 0);
+    let c11 = textureLoad(tex, vec2<i32>(x1, y1), 0);
+    let a = mix(c00, c10, tx);
+    let b = mix(c01, c11, tx);
+    return mix(a, b, ty);
+}
+
 fn hsl_to_rgb(hsl: vec3<f32>) -> vec3<f32> {
     let h = hsl.x;
     let s = hsl.y;
@@ -90,6 +113,27 @@ fn hsl_to_rgb(hsl: vec3<f32>) -> vec3<f32> {
 }
 "#;
 
+/// How a pass's output size relates to its input size.
+#[derive(Clone, Copy)]
+pub enum OutSize {
+    /// Same dimensions as the input.
+    Same,
+    /// Width and height swapped (90° rotation).
+    Swap,
+    /// Fixed dimensions.
+    Fixed(u32, u32),
+}
+
+impl OutSize {
+    fn resolve(self, w: u32, h: u32) -> (u32, u32) {
+        match self {
+            OutSize::Same => (w, h),
+            OutSize::Swap => (h, w),
+            OutSize::Fixed(fw, fh) => (fw.max(1), fh.max(1)),
+        }
+    }
+}
+
 /// One fragment-shader pass in a modifier's GPU chain.
 pub struct GpuPass {
     /// Stable cache key for the compiled pipeline (unique per shader).
@@ -99,8 +143,8 @@ pub struct GpuPass {
     pub fragment: String,
     /// Uniform buffer bytes for binding 2 (empty when the shader has none).
     pub uniforms: Vec<u8>,
-    /// Output size; `None` keeps the current size.
-    pub out_size: Option<(u32, u32)>,
+    /// Output size relative to the input.
+    pub out_size: OutSize,
 }
 
 impl GpuPass {
@@ -109,7 +153,7 @@ impl GpuPass {
             key,
             fragment: fragment.into(),
             uniforms: Vec::new(),
-            out_size: None,
+            out_size: OutSize::Same,
         }
     }
 
@@ -118,8 +162,8 @@ impl GpuPass {
         self
     }
 
-    pub fn with_out_size(mut self, w: u32, h: u32) -> Self {
-        self.out_size = Some((w, h));
+    pub fn with_out_size(mut self, out_size: OutSize) -> Self {
+        self.out_size = out_size;
         self
     }
 }
@@ -298,7 +342,7 @@ impl GpuContext {
         let mut keep: Vec<wgpu::Texture> = Vec::new();
 
         for pass in passes {
-            let (ow, oh) = pass.out_size.unwrap_or((w, h));
+            let (ow, oh) = pass.out_size.resolve(w, h);
             let target = self.make_texture(ow, oh);
             let pipeline = self.pipeline(pass);
 
