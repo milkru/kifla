@@ -1,6 +1,6 @@
 use eframe::egui;
 
-/// A numeric box that commits on drag release or focus loss, and can be
+/// A numeric box that commits live while dragging or typing, and can be
 /// fine-tuned by ±1 with Ctrl+scroll while hovered. Returns true when the
 /// value should be committed.
 pub fn drag_value<Num: egui::emath::Numeric>(
@@ -9,7 +9,9 @@ pub fn drag_value<Num: egui::emath::Numeric>(
     range: std::ops::RangeInclusive<Num>,
 ) -> bool {
     let response = ui.add(egui::DragValue::new(value).clamp_range(range.clone()));
-    fine_tune(ui, &response, value, range)
+    let mut commit = response.changed();
+    commit |= fine_tune(ui, &response, value, range);
+    commit
 }
 
 /// Adds Ctrl+scroll fine-tuning to an already-added widget response, nudging
@@ -24,9 +26,8 @@ pub fn fine_tune<Num: egui::emath::Numeric>(
 }
 
 /// Adds Ctrl+scroll fine-tuning to an already-added widget response, nudging
-/// the value by `step` per notch. While Ctrl is held, scrolling nudges the
-/// value live without committing; the commit (which triggers a re-render)
-/// fires once Ctrl is released. Returns true when the value should commit.
+/// the value by `step` per notch and committing immediately. Returns true when
+/// the value should commit.
 pub fn fine_tune_step<Num: egui::emath::Numeric>(
     ui: &egui::Ui,
     response: &egui::Response,
@@ -34,7 +35,7 @@ pub fn fine_tune_step<Num: egui::emath::Numeric>(
     range: std::ops::RangeInclusive<Num>,
     step: f64,
 ) -> bool {
-    let pending_id = response.id.with("ctrl_scroll_pending");
+    let mut commit = false;
 
     if response.hovered() {
         let dy = ui.input(|i| {
@@ -50,18 +51,12 @@ pub fn fine_tune_step<Num: egui::emath::Numeric>(
                 let v = (value.to_f64() + dy.signum() as f64 * step)
                     .clamp(range.start().to_f64(), range.end().to_f64());
                 *value = Num::from_f64(v);
-                ui.data_mut(|d| d.insert_temp(pending_id, true));
+                commit = true;
             }
         }
     }
 
-    let pending = ui.data(|d| d.get_temp::<bool>(pending_id).unwrap_or(false));
-    if pending && !ui.input(|i| i.modifiers.ctrl) {
-        ui.data_mut(|d| d.insert_temp(pending_id, false));
-        return true;
-    }
-
-    response.drag_released() || response.lost_focus()
+    commit || response.drag_released() || response.lost_focus()
 }
 
 /// Cycles a dropdown's value with Ctrl+scroll while its (closed) header is
