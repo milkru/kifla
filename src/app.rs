@@ -307,8 +307,16 @@ struct ModifierEntry {
 pub struct KiflaApp {
     original: Option<image::RgbaImage>,
     result: Option<image::RgbaImage>,
-    texture: Option<egui::TextureHandle>,
-    original_texture: Option<egui::TextureHandle>,
+    // Mipmapped display textures (native wgpu, registered with egui) so zoomed-
+    // out previews are smooth. `*_tex` keep the GPU texture alive; `*_id` is the
+    // egui handle used when painting. Rebuilt from `result`/`original` whenever
+    // the corresponding `*_dirty` flag is set.
+    display_tex: Option<eframe::wgpu::Texture>,
+    display_id: Option<egui::TextureId>,
+    display_dirty: bool,
+    orig_tex: Option<eframe::wgpu::Texture>,
+    orig_id: Option<egui::TextureId>,
+    orig_dirty: bool,
     modifiers: Vec<ModifierEntry>,
     size: [usize; 2],
     path: Option<PathBuf>,
@@ -347,6 +355,21 @@ pub struct KiflaApp {
 /// serialized parameters. Shared by the synchronous and background apply paths
 /// so both produce identical results (and so the worker needs no `Send` bound on
 /// the live `dyn Modifier` objects).
+/// Sampler for the preview: crisp Nearest when magnified (zoomed in past 100%),
+/// smooth trilinear (Linear + mipmaps) when minified (zoomed out) so the result
+/// doesn't shimmer or alias.
+fn display_sampler() -> eframe::wgpu::SamplerDescriptor<'static> {
+    eframe::wgpu::SamplerDescriptor {
+        label: Some("kifla.display_sampler"),
+        mag_filter: eframe::wgpu::FilterMode::Nearest,
+        min_filter: eframe::wgpu::FilterMode::Linear,
+        mipmap_filter: eframe::wgpu::FilterMode::Linear,
+        lod_min_clamp: 0.0,
+        lod_max_clamp: 32.0,
+        ..Default::default()
+    }
+}
+
 fn apply_stack(mut image: image::RgbaImage, stack: &[StackEntry]) -> image::RgbaImage {
     for entry in stack {
         if !entry.enabled {
@@ -437,10 +460,8 @@ impl KiflaApp {
 
     fn finish_load(&mut self, path: PathBuf, rgba: image::RgbaImage, ctx: &egui::Context) {
         let size = [rgba.width() as usize, rgba.height() as usize];
-        let color_image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
-        self.original_texture =
-            Some(ctx.load_texture("original", color_image, egui::TextureOptions::NEAREST));
         self.original = Some(rgba);
+        self.orig_dirty = true;
         self.size = size;
         self.path = Some(path);
         self.error = None;
@@ -458,6 +479,60 @@ impl KiflaApp {
 
     pub fn set_gpu(&mut self, gpu: GpuContext) {
         self.gpu = Some(gpu);
+    }
+
+    /// Rebuild and (re)register the mipmapped display textures for `result` and
+    /// `original` when they change. Runs in `update` where the wgpu render state
+    /// (and thus egui's texture registry) is reachable.
+    fn refresh_display(&mut self, frame: &mut eframe::Frame) {
+        if !self.display_dirty && !self.orig_dirty {
+            return;
+        }
+        let Some(rs) = frame.wgpu_render_state() else {
+            return;
+        };
+
+        if self.display_dirty {
+            let tex = match (self.gpu.as_ref(), self.result.as_ref()) {
+                (Some(gpu), Some(img)) => Some(gpu.upload_mipmapped(img)),
+                _ => None,
+            };
+            let mut renderer = rs.renderer.write();
+            if let Some(old) = self.display_id.take() {
+                renderer.free_texture(&old);
+            }
+            self.display_tex = tex.map(|tex| {
+                let view = tex.create_view(&Default::default());
+                self.display_id = Some(renderer.register_native_texture_with_sampler_options(
+                    &rs.device,
+                    &view,
+                    display_sampler(),
+                ));
+                tex
+            });
+            self.display_dirty = false;
+        }
+
+        if self.orig_dirty {
+            let tex = match (self.gpu.as_ref(), self.original.as_ref()) {
+                (Some(gpu), Some(img)) => Some(gpu.upload_mipmapped(img)),
+                _ => None,
+            };
+            let mut renderer = rs.renderer.write();
+            if let Some(old) = self.orig_id.take() {
+                renderer.free_texture(&old);
+            }
+            self.orig_tex = tex.map(|tex| {
+                let view = tex.create_view(&Default::default());
+                self.orig_id = Some(renderer.register_native_texture_with_sampler_options(
+                    &rs.device,
+                    &view,
+                    display_sampler(),
+                ));
+                tex
+            });
+            self.orig_dirty = false;
+        }
     }
 
     /// Run the whole stack on the GPU, returning `None` if the GPU is
@@ -484,7 +559,7 @@ impl KiflaApp {
     fn rebuild(&mut self, ctx: &egui::Context) {
         let Some(original) = self.original.clone() else {
             self.result = None;
-            self.texture = None;
+            self.display_dirty = true;
             return;
         };
         let result = match self.try_gpu_apply() {
@@ -514,12 +589,12 @@ impl KiflaApp {
         self.pending_apply = Some(rx);
     }
 
-    fn upload_result(&mut self, result: image::RgbaImage, ctx: &egui::Context) {
-        let size = [result.width() as usize, result.height() as usize];
-        let color_image = egui::ColorImage::from_rgba_unmultiplied(size, result.as_raw());
-        self.texture =
-            Some(ctx.load_texture("texture", color_image, egui::TextureOptions::NEAREST));
+    fn upload_result(&mut self, result: image::RgbaImage, _ctx: &egui::Context) {
+        self.size = [result.width() as usize, result.height() as usize];
         self.result = Some(result);
+        // The mipmapped display texture is (re)built in `update`, where the wgpu
+        // render state is available.
+        self.display_dirty = true;
     }
 
     fn save(&mut self, ctx: &egui::Context) {
@@ -669,8 +744,8 @@ impl KiflaApp {
     fn close_texture(&mut self, ctx: &egui::Context) {
         self.original = None;
         self.result = None;
-        self.texture = None;
-        self.original_texture = None;
+        self.display_dirty = true;
+        self.orig_dirty = true;
         self.modifiers.clear();
         self.size = [0, 0];
         self.path = None;
@@ -787,8 +862,9 @@ impl KiflaApp {
 }
 
 impl eframe::App for KiflaApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let loaded = self.texture.is_some();
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.refresh_display(frame);
+        let loaded = self.result.is_some();
         let mut open_requested = false;
         let mut save_requested = false;
         let mut save_as_requested = false;
@@ -894,7 +970,7 @@ impl eframe::App for KiflaApp {
             None => {}
         }
 
-        let loaded = self.texture.is_some();
+        let loaded = self.result.is_some();
 
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
@@ -1089,7 +1165,7 @@ impl eframe::App for KiflaApp {
             self.recenter = true;
             self.recenter_scale = 0.8;
         }
-        let comparing = compare_held && self.original_texture.is_some();
+        let comparing = compare_held && self.orig_id.is_some();
 
         if loaded {
             const MODIFIERS_WIDTH: f32 = 258.0;
@@ -1435,7 +1511,7 @@ impl eframe::App for KiflaApp {
                     ui.colored_label(egui::Color32::LIGHT_RED, error);
                 }
 
-                let Some(texture) = self.texture.clone() else {
+                let Some(result_id) = self.display_id else {
                     let area = ui.max_rect();
                     ui.painter().text(
                         egui::pos2(area.center().x, area.top() + 40.0),
@@ -1509,7 +1585,7 @@ impl eframe::App for KiflaApp {
                     full.max,
                 );
                 let response = ui.allocate_rect(rect, egui::Sense::drag());
-                let tex_size = texture.size_vec2();
+                let tex_size = egui::vec2(self.size[0] as f32, self.size[1] as f32);
 
                 if self.recenter {
                     let fit_ratio = (rect.width() / tex_size.x).min(rect.height() / tex_size.y);
@@ -1551,9 +1627,9 @@ impl eframe::App for KiflaApp {
                     egui::Rect::from_center_size(rect.center() + self.pan, tex_size * self.zoom);
                 self.view = Some((rect, image_rect.min));
                 let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
-                let draw_id = match (comparing, &self.original_texture) {
-                    (true, Some(original)) => original.id(),
-                    _ => texture.id(),
+                let draw_id = match (comparing, self.orig_id) {
+                    (true, Some(original)) => original,
+                    _ => result_id,
                 };
                 let painter = ui.painter_at(rect);
                 if self.tiled && image_rect.width() >= 1.0 && image_rect.height() >= 1.0 {
