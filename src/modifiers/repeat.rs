@@ -48,8 +48,8 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let sxn = u32(clamp(ceil(rx), 1.0, 4.0));
     let syn = u32(clamp(ceil(ry), 1.0, 4.0));
     let oc = floor(in.pos.xy);
-    // Accumulate in 0..255 integer space and floor the mean, mirroring the CPU
-    // path's integer averaging (so flat regions match exactly, no rounding drift).
+    // Accumulate in 0..255 integer space and floor the mean, so flat regions
+    // stay exact with no rounding drift.
     var acc = vec4<f32>(0.0);
     var count = 0.0;
     for (var j = 0u; j < syn; j = j + 1u) {

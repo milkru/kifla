@@ -56,7 +56,7 @@ macro_rules! modifier_id {
     };
 }
 
-/// Implements `id` and `to_json` for an modifier whose struct derives `Serialize`.
+/// Implements `id` and `to_json` for a modifier whose struct derives `Serialize`.
 #[macro_export]
 macro_rules! modifier_serde {
     ($id:literal) => {

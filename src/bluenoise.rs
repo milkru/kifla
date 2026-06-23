@@ -75,8 +75,8 @@ pub fn generate(size: usize) -> Vec<u8> {
     }
 
     let mut energy = vec![0f32; n];
-    for i in 0..n {
-        if pattern[i] {
+    for (i, &set) in pattern.iter().enumerate() {
+        if set {
             splat(&mut energy, i, si, radius, two_sig2, 1.0);
         }
     }

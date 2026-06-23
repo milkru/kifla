@@ -37,7 +37,7 @@ impl Modifier for Curves {
 
     fn gpu_pass(&self) -> Option<crate::gpu::GpuPass> {
         // Pass the 256-entry LUT (normalized) as 64 vec4s and look it up by the
-        // 8-bit channel value, matching the CPU table exactly.
+        // 8-bit channel value.
         let lut = build_lut(&self.points);
         let table: Vec<f32> = lut.iter().map(|&v| v as f32 / 255.0).collect();
         Some(

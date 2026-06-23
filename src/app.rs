@@ -33,19 +33,14 @@ fn draw_rulers(
     let painter = ui.painter_at(full);
     let bg = egui::Color32::from_gray(45);
     let line = egui::Color32::from_gray(120);
-    let minor_line = line;
     let text = egui::Color32::from_gray(190);
     let font = egui::FontId::proportional(9.0);
     let step = nice_step(70.0 / zoom);
 
+    // `step` is always 1, 2, or 5 times a power of ten; the leading digit picks
+    // how many minor ticks subdivide it (2 splits into 8, 1 and 5 into 10).
     let lead = step / 10f32.powf(step.log10().floor());
-    let subs = if lead < 1.5 {
-        10
-    } else if lead < 3.0 {
-        8
-    } else {
-        10
-    };
+    let subs = if (1.5..3.0).contains(&lead) { 8 } else { 10 };
     let minor = step / subs as f32;
 
     painter.rect_filled(
@@ -68,7 +63,7 @@ fn draw_rulers(
         if x >= view.left() {
             painter.line_segment(
                 [egui::pos2(x, view.top() - 3.0), egui::pos2(x, view.top())],
-                egui::Stroke::new(1.0, minor_line),
+                egui::Stroke::new(1.0, line),
             );
         }
         tm += minor;
@@ -102,7 +97,7 @@ fn draw_rulers(
         if y >= view.top() {
             painter.line_segment(
                 [egui::pos2(view.left() - 3.0, y), egui::pos2(view.left(), y)],
-                egui::Stroke::new(1.0, minor_line),
+                egui::Stroke::new(1.0, line),
             );
         }
         tm += minor;
@@ -543,7 +538,7 @@ impl KiflaApp {
         self.saved_stack = self.stack_entries();
         self.reset_history();
         self.refresh_title(ctx);
-        self.rebuild(ctx);
+        self.rebuild();
     }
 
     pub fn set_gpu(&mut self, gpu: GpuContext) {
@@ -570,14 +565,13 @@ impl KiflaApp {
             if let Some(old) = self.display_id.take() {
                 renderer.free_texture(&old);
             }
-            self.display_tex = tex.map(|tex| {
+            self.display_tex = tex.inspect(|tex| {
                 let view = tex.create_view(&Default::default());
                 self.display_id = Some(renderer.register_native_texture_with_sampler_options(
                     &rs.device,
                     &view,
                     display_sampler(),
                 ));
-                tex
             });
             self.display_dirty = false;
         }
@@ -591,14 +585,13 @@ impl KiflaApp {
             if let Some(old) = self.orig_id.take() {
                 renderer.free_texture(&old);
             }
-            self.orig_tex = tex.map(|tex| {
+            self.orig_tex = tex.inspect(|tex| {
                 let view = tex.create_view(&Default::default());
                 self.orig_id = Some(renderer.register_native_texture_with_sampler_options(
                     &rs.device,
                     &view,
                     display_sampler(),
                 ));
-                tex
             });
             self.orig_dirty = false;
         }
@@ -606,7 +599,7 @@ impl KiflaApp {
 
     /// Run the modifier stack on the GPU and store the result. GPU is the only
     /// path; if it's somehow unavailable the original passes through unchanged.
-    fn rebuild(&mut self, ctx: &egui::Context) {
+    fn rebuild(&mut self) {
         let Some(original) = self.original.clone() else {
             self.result = None;
             self.display_dirty = true;
@@ -623,10 +616,10 @@ impl KiflaApp {
             (_, true) | (None, _) => original,
             (Some(gpu), false) => gpu.apply(&original, &steps),
         };
-        self.upload_result(result, ctx);
+        self.upload_result(result);
     }
 
-    fn upload_result(&mut self, result: image::RgbaImage, _ctx: &egui::Context) {
+    fn upload_result(&mut self, result: image::RgbaImage) {
         self.size = [result.width() as usize, result.height() as usize];
         self.result = Some(result);
         // The mipmapped display texture is (re)built in `update`, where the wgpu
@@ -776,7 +769,7 @@ impl KiflaApp {
         self.error = None;
         self.update_unsaved(ctx);
         self.reset_history();
-        self.rebuild(ctx);
+        self.rebuild();
     }
 
     fn close_texture(&mut self, ctx: &egui::Context) {
@@ -1861,7 +1854,7 @@ impl eframe::App for KiflaApp {
         // Re-apply the stack on the GPU whenever something changed. It's fast
         // enough to run synchronously each frame the state is dirty.
         if self.dirty {
-            self.rebuild(ctx);
+            self.rebuild();
             self.dirty = false;
         }
     }

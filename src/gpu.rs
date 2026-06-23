@@ -6,7 +6,7 @@ use eframe::wgpu;
 const TEX_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 // Display textures are sRGB so egui samples them the same way it does its own
 // managed textures (sampling decodes sRGB->linear). The processing pipeline
-// stays linear `Rgba8Unorm` so its math matches the CPU path byte-for-byte.
+// stays plain `Rgba8Unorm` so modifier math runs directly on the stored values.
 const DISPLAY_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
 // Shared vertex stage + input bindings prepended to every modifier fragment
@@ -40,7 +40,7 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VsOut {
 // intermediate (e.g. lighting reads the source plus its blurred illumination).
 @group(0) @binding(3) var src_tex: texture_2d<f32>;
 
-// HSL helpers mirroring src/color.rs exactly so GPU output matches the CPU path.
+// HSL helpers shared by the color modifiers.
 fn rgb_to_hsl(c: vec3<f32>) -> vec3<f32> {
     let mx = max(c.r, max(c.g, c.b));
     let mn = min(c.r, min(c.g, c.b));
@@ -76,8 +76,8 @@ fn hue_channel(p: f32, q: f32, t_in: f32) -> f32 {
     return p;
 }
 
-// Bilinear sample of the wrapped (tiling) input, mirroring pixel::sample_wrap
-// so geometry modifiers match the CPU path. `p` is in source-pixel space.
+// Bilinear sample of the wrapped (tiling) input, used by the geometry
+// modifiers. `p` is in source-pixel space.
 fn sample_wrap(p: vec2<f32>) -> vec4<f32> {
     let dim = vec2<f32>(textureDimensions(tex));
     let xf = p.x - floor(p.x / dim.x) * dim.x;
@@ -209,9 +209,7 @@ pub enum GpuStep {
 /// Shaders read them as `array<vec4<f32>, N>` (see binding 2).
 pub fn uniforms(values: &[f32]) -> Vec<u8> {
     let mut padded = values.to_vec();
-    while padded.len() % 4 != 0 {
-        padded.push(0.0);
-    }
+    padded.resize(values.len().next_multiple_of(4), 0.0);
     bytemuck::cast_slice(&padded).to_vec()
 }
 

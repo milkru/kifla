@@ -207,7 +207,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 
     if (mode == 4 || mode == 5) {
         // Min / Max luminance within the source block (with threshold + nearest
-        // fallback), mirroring resample_extreme.
+        // fallback).
         let x0 = (oc.x * src.x) / dst.x;
         let x1 = min(max(((oc.x + 1) * src.x + dst.x - 1) / dst.x, x0 + 1), src.x);
         let y0 = (oc.y * src.y) / dst.y;
@@ -236,7 +236,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 
     if (mode == 6) {
         // Detail-preserving: weight each block pixel by its distance from the
-        // block mean (mirrors resample_detail).
+        // block mean.
         let x0 = (oc.x * src.x) / dst.x;
         let x1 = min(max(((oc.x + 1) * src.x + dst.x - 1) / dst.x, x0 + 1), src.x);
         let y0 = (oc.y * src.y) / dst.y;
