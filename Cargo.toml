@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+arboard = { version = "3", features = ["image-data"] }
 bytemuck = { version = "1", features = ["derive"] }
 eframe = { version = "0.26", features = ["wgpu"] }
 egui = { version = "0.26", features = ["serde"] }

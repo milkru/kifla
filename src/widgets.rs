@@ -119,7 +119,7 @@ fn decimals_for(step: f64) -> usize {
     if step >= 1.0 {
         0
     } else {
-        (-step.log10()).ceil().max(0.0).min(6.0) as usize
+        (-step.log10()).ceil().clamp(0.0, 6.0) as usize
     }
 }
 

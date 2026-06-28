@@ -521,12 +521,12 @@ impl KiflaApp {
         self.pending_load = Some(rx);
     }
 
-    fn finish_load(&mut self, path: PathBuf, rgba: image::RgbaImage, ctx: &egui::Context) {
+    fn finish_load(&mut self, path: Option<PathBuf>, rgba: image::RgbaImage, ctx: &egui::Context) {
         let size = [rgba.width() as usize, rgba.height() as usize];
         self.original = Some(rgba);
         self.orig_dirty = true;
         self.size = size;
-        self.path = Some(path);
+        self.path = path;
         self.error = None;
         // Start each opened image with a fresh, empty stack.
         self.modifiers.clear();
@@ -539,6 +539,22 @@ impl KiflaApp {
         self.reset_history();
         self.refresh_title(ctx);
         self.rebuild();
+    }
+
+    /// Load an image straight from the clipboard (e.g. a screenshot). The result
+    /// has no path, so saving routes through Save As.
+    fn paste_image(&mut self, ctx: &egui::Context) {
+        let image = arboard::Clipboard::new().and_then(|mut cb| cb.get_image());
+        match image {
+            Ok(img) => {
+                let (w, h) = (img.width as u32, img.height as u32);
+                match image::RgbaImage::from_raw(w, h, img.bytes.into_owned()) {
+                    Some(rgba) => self.finish_load(None, rgba, ctx),
+                    None => self.error = Some("Clipboard image was malformed.".to_owned()),
+                }
+            }
+            Err(_) => self.error = Some("No image on the clipboard.".to_owned()),
+        }
     }
 
     pub fn set_gpu(&mut self, gpu: GpuContext) {
@@ -628,6 +644,11 @@ impl KiflaApp {
     }
 
     fn save(&mut self, ctx: &egui::Context) {
+        // A pasted image has no path yet; send Save straight to Save As.
+        if self.result.is_some() && self.path.is_none() {
+            self.save_as();
+            return;
+        }
         let (Some(result), Some(path)) = (&self.result, &self.path) else {
             return;
         };
@@ -911,12 +932,25 @@ impl eframe::App for KiflaApp {
         let mut add_requested = false;
         let mut undo_requested = false;
         let mut redo_requested = false;
+        let mut paste_requested = false;
         let typing = ctx.memory(|m| m.focus().is_some());
         ctx.input_mut(|i| {
             open_requested |= i.consume_shortcut(&SHORTCUT_OPEN);
             quit_requested |= i.consume_shortcut(&SHORTCUT_QUIT);
             if i.consume_shortcut(&SHORTCUT_ABOUT) {
                 self.show_about = true;
+            }
+            // egui-winit turns the Ctrl+V press into a text-paste event (or drops
+            // it for an image clipboard), so trigger on the V release with Ctrl
+            // held. Skip while a text field is focused, where Ctrl+V pastes text.
+            if !typing {
+                paste_requested |= i.events.iter().any(|e| {
+                    matches!(
+                        e,
+                        egui::Event::Key { key: Key::V, pressed: false, modifiers, .. }
+                            if modifiers.command
+                    )
+                });
             }
             if loaded {
                 // Consume Save As (Ctrl+Shift+S) before Save (Ctrl+S): egui's
@@ -964,7 +998,7 @@ impl eframe::App for KiflaApp {
             Some(Ok(result)) => {
                 self.pending_load = None;
                 match result {
-                    Ok((path, rgba)) => self.finish_load(path, rgba, ctx),
+                    Ok((path, rgba)) => self.finish_load(Some(path), rgba, ctx),
                     Err(err) => self.error = Some(err),
                 }
             }
@@ -1794,6 +1828,9 @@ impl eframe::App for KiflaApp {
 
         if open_requested {
             self.open_texture();
+        }
+        if paste_requested {
+            self.paste_image(ctx);
         }
         if save_requested {
             self.save(ctx);

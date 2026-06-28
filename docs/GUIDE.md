@@ -12,8 +12,9 @@ remove any of them at any point without losing quality.
 
 ## Getting started
 
-1. **Open an image.** Use `File → Open` (`Ctrl+O`), or just drag a file onto the
-   window. Supported inputs: PNG, JPEG, BMP, TGA, TIFF, and WebP.
+1. **Open an image.** Use `File → Open` (`Ctrl+O`), drag a file onto the window,
+   or paste a screenshot from the clipboard with `Ctrl+V`. Supported inputs: PNG,
+   JPEG, BMP, TGA, TIFF, and WebP.
 2. **Add a modifier.** Click **Add…** in the left panel (`Ctrl+A`), or pick one
    from the **Transform** or **Image** menus.
 3. **Adjust its settings.** The preview updates as you go.
@@ -186,6 +187,7 @@ noise **dithering** to smooth banding when you drop to few colors.
 | Shortcut | Action |
 | --- | --- |
 | `Ctrl+O` | Open image |
+| `Ctrl+V` | Paste image from clipboard |
 | `Ctrl+S` | Save |
 | `Ctrl+Shift+S` | Save As |
 | `Ctrl+W` | Close image |
